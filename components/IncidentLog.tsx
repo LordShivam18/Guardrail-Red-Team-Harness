@@ -37,7 +37,7 @@ export async function IncidentLog() {
             </h2>
           </div>
           <p className="text-sm text-slate-500">
-            Run {data.runId.slice(0, 8)} · {formatTimestamp(data.timestamp)}
+            Run {data.runId.slice(0, 8)} - {formatTimestamp(data.timestamp)}
           </p>
         </div>
 
