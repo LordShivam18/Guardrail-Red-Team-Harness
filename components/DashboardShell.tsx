@@ -36,7 +36,7 @@ export function DashboardShell() {
               Red-Team Control Room
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
-              Monitor the latest Supabase-backed run, inspect failure modes, and isolate
+              Monitor the latest Neon-backed run, inspect failure modes, and isolate
               jailbreaks from the active incident stream.
             </p>
           </div>

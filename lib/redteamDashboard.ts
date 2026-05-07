@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { sql } from "./db";
 
 type OutcomeFlag = "PASSED" | "FAILED" | "FP" | "FN";
 
@@ -10,39 +10,15 @@ type RunRow = {
   fp_rate: number;
 };
 
-type PromptJoin = {
-  category: string;
-  prompt_text: string;
-};
-
 type ResultRow = {
   id: string;
   final_output: string | null;
   raw_output: string | null;
   outcome_flag: OutcomeFlag;
   created_at: string;
-  adversarial_prompts: PromptJoin | PromptJoin[] | null;
+  category: string | null;
+  prompt_text: string | null;
 };
-
-function getDashboardSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
-  const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Missing Supabase environment variables.");
-  }
-
-  if (!/^https?:\/\//.test(supabaseUrl)) {
-    throw new Error("Invalid Supabase URL. Set SUPABASE_URL to your project HTTPS URL.");
-  }
-
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: false
-    }
-  });
-}
 
 export type RunSummaryData = {
   runId: string;
@@ -69,20 +45,19 @@ export type IncidentLogData = {
 };
 
 async function getLatestRun() {
-  const supabase = getDashboardSupabaseClient();
+  const rows = (await sql`
+    select
+      id,
+      timestamp,
+      model_version,
+      jailbreak_rate,
+      fp_rate
+    from redteam_runs
+    order by timestamp desc
+    limit 1
+  `) as RunRow[];
 
-  const { data, error } = await supabase
-    .from("redteam_runs")
-    .select("id,timestamp,model_version,jailbreak_rate,fp_rate")
-    .order("timestamp", { ascending: false })
-    .limit(1)
-    .maybeSingle<RunRow>();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return rows[0] ?? null;
 }
 
 export async function getLatestRunSummary(): Promise<RunSummaryData | null> {
@@ -92,16 +67,11 @@ export async function getLatestRunSummary(): Promise<RunSummaryData | null> {
     return null;
   }
 
-  const supabase = getDashboardSupabaseClient();
-
-  const { count, error } = await supabase
-    .from("redteam_results")
-    .select("id", { count: "exact", head: true })
-    .eq("run_id", latestRun.id);
-
-  if (error) {
-    throw error;
-  }
+  const countRows = (await sql`
+    select count(*)::int as total_tests
+    from redteam_results
+    where run_id = ${latestRun.id}::uuid
+  `) as { total_tests: number }[];
 
   return {
     runId: latestRun.id,
@@ -109,7 +79,7 @@ export async function getLatestRunSummary(): Promise<RunSummaryData | null> {
     modelVersion: latestRun.model_version,
     jailbreakRate: latestRun.jailbreak_rate,
     falsePositiveRate: latestRun.fp_rate,
-    totalTests: count ?? 0
+    totalTests: countRows[0]?.total_tests ?? 0
   };
 }
 
@@ -120,44 +90,29 @@ export async function getLatestRunIncidents(): Promise<IncidentLogData | null> {
     return null;
   }
 
-  const supabase = getDashboardSupabaseClient();
+  const rows = (await sql`
+    select
+      r.id,
+      r.final_output,
+      r.raw_output,
+      r.outcome_flag,
+      r.created_at,
+      p.category,
+      p.prompt_text
+    from redteam_results r
+    inner join adversarial_prompts p on p.id = r.test_id
+    where r.run_id = ${latestRun.id}::uuid
+    order by r.created_at asc
+  `) as ResultRow[];
 
-  const { data, error } = await supabase
-    .from("redteam_results")
-    .select(
-      `
-        id,
-        final_output,
-        raw_output,
-        outcome_flag,
-        created_at,
-        adversarial_prompts!inner (
-          category,
-          prompt_text
-        )
-      `
-    )
-    .eq("run_id", latestRun.id)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    throw error;
-  }
-
-  const incidents = ((data ?? []) as unknown as ResultRow[]).map((row) => {
-    const prompt = Array.isArray(row.adversarial_prompts)
-      ? row.adversarial_prompts[0]
-      : row.adversarial_prompts;
-
-    return {
-      id: row.id,
-      category: prompt?.category ?? "unknown",
-      prompt: prompt?.prompt_text ?? "Prompt unavailable",
-      outcomeFlag: row.outcome_flag,
-      finalOutput: row.final_output ?? row.raw_output ?? "No output captured.",
-      createdAt: row.created_at
-    };
-  });
+  const incidents = rows.map((row) => ({
+    id: row.id,
+    category: row.category ?? "unknown",
+    prompt: row.prompt_text ?? "Prompt unavailable",
+    outcomeFlag: row.outcome_flag,
+    finalOutput: row.final_output ?? row.raw_output ?? "No output captured.",
+    createdAt: row.created_at
+  }));
 
   return {
     runId: latestRun.id,

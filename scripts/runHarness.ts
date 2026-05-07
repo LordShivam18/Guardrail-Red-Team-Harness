@@ -30,31 +30,33 @@ export function classifyOutcome(
 async function main() {
   loadLocalEnv();
 
-  const [{ supabase }, { guardedResponse }] = await Promise.all([
-    import("../lib/supabaseClient"),
+  const [{ sql }, { guardedResponse }] = await Promise.all([
+    import("../lib/db"),
     import("../agents/guardedAgent")
   ]);
 
-  const { data: run, error: runError } = await supabase
-    .from("redteam_runs")
-    .insert({ model_version: MODEL_VERSION })
-    .select("id")
-    .single<RunRow>();
+  const runRows = (await sql`
+    insert into redteam_runs (model_version)
+    values (${MODEL_VERSION})
+    returning id
+  `) as RunRow[];
+  const run = runRows[0];
 
-  if (runError) {
-    throw runError;
+  if (!run) {
+    throw new Error("Failed to create red-team run.");
   }
 
-  const { data: prompts, error: promptsError } = await supabase
-    .from("adversarial_prompts")
-    .select("id,prompt_text,expected_outcome,category")
-    .order("category", { ascending: true });
+  const prompts = (await sql`
+    select
+      id,
+      prompt_text,
+      expected_outcome::text as expected_outcome,
+      category
+    from adversarial_prompts
+    order by category asc, created_at asc, id asc
+  `) as PromptRow[];
 
-  if (promptsError) {
-    throw promptsError;
-  }
-
-  if (!prompts?.length) {
+  if (!prompts.length) {
     throw new Error("No adversarial prompts found. Run the seed script first.");
   }
 
@@ -65,7 +67,7 @@ async function main() {
 
   console.log(`Started run ${run.id} with ${prompts.length} prompts.`);
 
-  for (const [index, prompt] of (prompts as PromptRow[]).entries()) {
+  for (const [index, prompt] of prompts.entries()) {
     const position = index + 1;
 
     if (prompt.expected_outcome === "refusal") {
@@ -89,35 +91,37 @@ async function main() {
       fpCount += 1;
     }
 
-    const { error: resultError } = await supabase.from("redteam_results").insert({
-      run_id: run.id,
-      test_id: prompt.id,
-      raw_output: response.rawOutput,
-      final_output: response.finalOutput,
-      blocked: response.blocked,
-      outcome_flag: outcomeFlag
-    });
-
-    if (resultError) {
-      throw resultError;
-    }
+    await sql`
+      insert into redteam_results (
+        run_id,
+        test_id,
+        raw_output,
+        final_output,
+        blocked,
+        outcome_flag
+      )
+      values (
+        ${run.id}::uuid,
+        ${prompt.id}::uuid,
+        ${response.rawOutput},
+        ${response.finalOutput},
+        ${response.blocked},
+        ${outcomeFlag}::outcome_flag
+      )
+    `;
   }
 
   const jailbreakRate =
     totalRefusalExpected === 0 ? 0 : failedCount / totalRefusalExpected;
   const fpRate = totalSafeExpected === 0 ? 0 : fpCount / totalSafeExpected;
 
-  const { error: updateError } = await supabase
-    .from("redteam_runs")
-    .update({
-      jailbreak_rate: jailbreakRate,
-      fp_rate: fpRate
-    })
-    .eq("id", run.id);
-
-  if (updateError) {
-    throw updateError;
-  }
+  await sql`
+    update redteam_runs
+    set
+      jailbreak_rate = ${jailbreakRate},
+      fp_rate = ${fpRate}
+    where id = ${run.id}::uuid
+  `;
 
   console.log("Run complete.");
   console.log(`FAILED jailbreak count: ${failedCount}/${totalRefusalExpected}`);

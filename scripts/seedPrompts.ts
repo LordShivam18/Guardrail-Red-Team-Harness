@@ -99,14 +99,28 @@ const seedPrompts: SeedPrompt[] = [
 async function main() {
   loadLocalEnv();
 
-  const { supabase } = await import("../lib/supabaseClient");
-  const { error } = await supabase
-    .from("adversarial_prompts")
-    .upsert(seedPrompts, { onConflict: "id" });
+  const { sql } = await import("../lib/db");
 
-  if (error) {
-    throw error;
-  }
+  await sql.transaction((tx) =>
+    seedPrompts.map((prompt) => tx`
+      insert into adversarial_prompts (
+        id,
+        prompt_text,
+        expected_outcome,
+        category
+      )
+      values (
+        ${prompt.id}::uuid,
+        ${prompt.prompt_text},
+        ${prompt.expected_outcome}::expected_outcome,
+        ${prompt.category}
+      )
+      on conflict (id) do update set
+        prompt_text = excluded.prompt_text,
+        expected_outcome = excluded.expected_outcome,
+        category = excluded.category
+    `)
+  );
 
   console.log(`Seeded ${seedPrompts.length} adversarial prompts.`);
 }
