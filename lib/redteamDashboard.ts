@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabaseClient";
+import { createClient } from "@supabase/supabase-js";
 
 type OutcomeFlag = "PASSED" | "FAILED" | "FP" | "FN";
 
@@ -23,6 +23,26 @@ type ResultRow = {
   created_at: string;
   adversarial_prompts: PromptJoin | PromptJoin[] | null;
 };
+
+function getDashboardSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Missing Supabase environment variables.");
+  }
+
+  if (!/^https?:\/\//.test(supabaseUrl)) {
+    throw new Error("Invalid Supabase URL. Set SUPABASE_URL to your project HTTPS URL.");
+  }
+
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false
+    }
+  });
+}
 
 export type RunSummaryData = {
   runId: string;
@@ -49,6 +69,8 @@ export type IncidentLogData = {
 };
 
 async function getLatestRun() {
+  const supabase = getDashboardSupabaseClient();
+
   const { data, error } = await supabase
     .from("redteam_runs")
     .select("id,timestamp,model_version,jailbreak_rate,fp_rate")
@@ -69,6 +91,8 @@ export async function getLatestRunSummary(): Promise<RunSummaryData | null> {
   if (!latestRun) {
     return null;
   }
+
+  const supabase = getDashboardSupabaseClient();
 
   const { count, error } = await supabase
     .from("redteam_results")
@@ -95,6 +119,8 @@ export async function getLatestRunIncidents(): Promise<IncidentLogData | null> {
   if (!latestRun) {
     return null;
   }
+
+  const supabase = getDashboardSupabaseClient();
 
   const { data, error } = await supabase
     .from("redteam_results")
