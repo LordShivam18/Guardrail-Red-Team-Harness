@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "seed:prompts": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seedPrompts.ts\"",
+    "redteam:run": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/runHarness.ts\""
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -26,6 +28,7 @@
     "eslint-config-next": "^14.2.13",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
+    "tsx": "^4.21.0",
     "typescript": "^5.6.2"
   }
 }
