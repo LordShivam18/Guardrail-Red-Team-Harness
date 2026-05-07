@@ -1,41 +1,56 @@
-const summaryStats = [
-  { label: "Prompt library", value: "0" },
-  { label: "Runs recorded", value: "0" },
-  { label: "Jailbreak rate", value: "0.0%" },
-  { label: "False positives", value: "0.0%" }
-];
+import { Suspense } from "react";
+import { IncidentLog } from "@/components/IncidentLog";
+import { RefreshButton } from "@/components/RefreshButton";
+import { RunSummary } from "@/components/RunSummary";
+
+function SummarySkeleton() {
+  return (
+    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {["Model", "Jailbreak", "False Positive", "Total"].map((label) => (
+        <article
+          aria-label={`${label} metric loading`}
+          className="h-36 animate-pulse rounded-lg border border-slate-800 bg-slate-950/70"
+          key={label}
+        />
+      ))}
+    </section>
+  );
+}
+
+function IncidentSkeleton() {
+  return (
+    <section className="h-96 animate-pulse rounded-lg border border-slate-800 bg-slate-950/70" />
+  );
+}
 
 export function DashboardShell() {
   return (
-    <main className="min-h-screen bg-slate-50">
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
-        <div className="flex flex-col gap-3">
-          <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">
-            Guardrail & Red-Team Harness
-          </p>
-          <h1 className="max-w-3xl text-4xl font-semibold text-slate-950">
-            Measure how models respond to adversarial prompts before they reach production.
-          </h1>
-          <p className="max-w-2xl text-base leading-7 text-slate-600">
-            Track prompt categories, model runs, blocking behavior, and failure modes from a single dashboard.
-          </p>
-        </div>
+    <main className="min-h-screen bg-slate-950 text-slate-100">
+      <section className="mx-auto flex w-full max-w-7xl flex-col gap-7 px-5 py-8 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-5 border-b border-slate-800 pb-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">
+              Guardrail & Red-Team Harness
+            </p>
+            <h1 className="mt-3 text-3xl font-semibold text-slate-50 sm:text-4xl">
+              Red-Team Control Room
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
+              Monitor the latest Supabase-backed run, inspect failure modes, and isolate
+              jailbreaks from the active incident stream.
+            </p>
+          </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {summaryStats.map((stat) => (
-            <div key={stat.label} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-              <p className="text-sm text-slate-500">{stat.label}</p>
-              <p className="mt-2 text-3xl font-semibold text-slate-950">{stat.value}</p>
-            </div>
-          ))}
-        </div>
+          <RefreshButton />
+        </header>
 
-        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6">
-          <h2 className="text-lg font-semibold text-slate-950">Run history</h2>
-          <p className="mt-2 text-sm text-slate-600">
-            Supabase is ready to store adversarial prompts, red-team runs, and per-test outcomes.
-          </p>
-        </div>
+        <Suspense fallback={<SummarySkeleton />}>
+          <RunSummary />
+        </Suspense>
+
+        <Suspense fallback={<IncidentSkeleton />}>
+          <IncidentLog />
+        </Suspense>
       </section>
     </main>
   );
