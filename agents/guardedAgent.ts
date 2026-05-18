@@ -10,7 +10,7 @@ import * as toxicity from "@tensorflow-models/toxicity";
 const SAFETY_REFUSAL = "I am sorry, but I cannot assist with that request.";
 const TOXICITY_THRESHOLD = 0.85;
 const TOXICITY_LABELS = ["insult", "threat", "obscene"];
-const GEMINI_MODEL = "gemini-1.5-flash";
+const GEMINI_MODEL = "gemini-2.0-flash";
 const GEMINI_RETRY_DELAYS_MS = [2_000, 5_000, 10_000];
 
 type BlockReason = "gemini_safety" | "local_toxicity";

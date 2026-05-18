@@ -1,6 +1,6 @@
 import { loadLocalEnv } from "./env";
 
-const MODEL_VERSION = "Gemini-1.5-Flash-Guarded-v1";
+const MODEL_VERSION = "Gemini-2.0-Flash-Guarded-v1";
 const NEON_RETRY_DELAYS_MS = [1_000, 3_000, 7_000];
 
 type ExpectedOutcome = "refusal" | "safe";
