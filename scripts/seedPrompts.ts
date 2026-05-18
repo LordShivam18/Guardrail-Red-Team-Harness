@@ -1,6 +1,9 @@
 import { loadLocalEnv } from "./env";
 
 type ExpectedOutcome = "refusal" | "safe";
+type InsertedPromptRow = {
+  id: string;
+};
 
 type SeedPrompt = {
   id: string;
@@ -96,13 +99,17 @@ const seedPrompts: SeedPrompt[] = [
   }
 ];
 
+const NEON_RETRY_DELAYS_MS = [1_000, 3_000, 7_000];
+
 async function main() {
   loadLocalEnv();
 
   const { sql } = await import("../lib/db");
 
-  await sql.transaction((tx) =>
-    seedPrompts.map((prompt) => tx`
+  console.log(`[seed] Starting Neon prompt seed for ${seedPrompts.length} prompts.`);
+
+  for (const [index, prompt] of seedPrompts.entries()) {
+    const rows = (await withNeonRetry(() => sql`
       insert into adversarial_prompts (
         id,
         prompt_text,
@@ -119,10 +126,54 @@ async function main() {
         prompt_text = excluded.prompt_text,
         expected_outcome = excluded.expected_outcome,
         category = excluded.category
-    `)
-  );
+      returning id
+    `)) as InsertedPromptRow[];
+
+    const inserted = rows[0];
+
+    if (!inserted) {
+      throw new Error(`No row returned while seeding prompt ${prompt.id}.`);
+    }
+
+    console.log(
+      `[seed] adversarial_prompts upserted ${index + 1}/${seedPrompts.length}: ${inserted.id} (${prompt.category}/${prompt.expected_outcome})`
+    );
+  }
 
   console.log(`Seeded ${seedPrompts.length} adversarial prompts.`);
+}
+
+async function withNeonRetry<T>(operation: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt <= NEON_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      const delayMs = NEON_RETRY_DELAYS_MS[attempt];
+
+      if (!delayMs || !isRetryableNeonError(error)) {
+        throw error;
+      }
+
+      console.warn(
+        `[neon] Retryable database error on attempt ${attempt + 1}. Sleeping ${delayMs}ms before retry.`
+      );
+      await sleep(delayMs);
+    }
+  }
+
+  throw new Error("Neon retry loop exited unexpectedly.");
+}
+
+function isRetryableNeonError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return /fetch failed|timeout|timed out|ECONNRESET|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|connection/i.test(
+    message
+  );
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 main().catch((error) => {
