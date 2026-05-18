@@ -43,7 +43,7 @@ export function DashboardShell() {
               <h1 className="text-3xl font-semibold text-slate-50 sm:text-4xl">
                 Red-Team Control Room
               </h1>
-              <span className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-100 shadow-[0_0_24px_rgba(52,211,153,0.16)]">
+              <span className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-300/30 bg-white/[0.06] px-3 py-1 text-xs font-semibold text-emerald-100 shadow-[0_0_28px_rgba(52,211,153,0.22),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-xl">
                 <span className="relative flex h-2.5 w-2.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-75" />
                   <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-300" />
