@@ -32,10 +32,12 @@ async function main() {
   loadLocalEnv();
   const promptDelayMs = getPromptDelayMs();
 
-  const [{ sql }, { guardedResponse }] = await Promise.all([
+  const [{ assertRequiredTablesExist, sql }, { guardedResponse }] = await Promise.all([
     import("../lib/db"),
     import("../agents/guardedAgent")
   ]);
+
+  await assertRequiredTablesExist();
 
   console.log(`[harness] Creating redteam_runs row for ${MODEL_VERSION}.`);
   const runRows = (await withNeonRetry(() => sql`

@@ -41,6 +41,9 @@ jobs:
           fi
           echo "✅ Production cloud configurations successfully loaded."
 
+      - name: Verify Database Schema
+        run: npm run db:check-schema
+
       - name: Seed adversarial prompts
         run: npm run seed:prompts
 

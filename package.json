@@ -9,6 +9,7 @@
     "lint": "node \"./node_modules/next/dist/bin/next\" lint",
     "seed:prompts": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seedPrompts.ts\"",
     "redteam:run": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/runHarness.ts\"",
+    "db:check-schema": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/checkSchema.ts\"",
     "cleanup:data": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/cleanupData.ts\""
   },
   "dependencies": {

@@ -104,9 +104,10 @@ const NEON_RETRY_DELAYS_MS = [1_000, 3_000, 7_000];
 async function main() {
   loadLocalEnv();
 
-  const { sql } = await import("../lib/db");
+  const { assertRequiredTablesExist, sql } = await import("../lib/db");
 
   console.log(`[seed] Starting Neon prompt seed for ${seedPrompts.length} prompts.`);
+  await assertRequiredTablesExist(["adversarial_prompts"]);
 
   for (const [index, prompt] of seedPrompts.entries()) {
     const rows = (await withNeonRetry(() => sql`
