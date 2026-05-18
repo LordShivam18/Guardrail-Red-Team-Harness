@@ -134,7 +134,9 @@ async function main() {
     );
 
     if (position < prompts.length && promptDelayMs > 0) {
-      console.log(`[harness] Sleeping ${promptDelayMs}ms before next Gemini request.`);
+      console.log(
+        "[harness] Pacing delay active. Sleeping 4.5s to respect free-tier RPM limits..."
+      );
       await sleep(promptDelayMs);
     }
   }
@@ -193,10 +195,10 @@ function sleep(ms: number) {
 }
 
 function getPromptDelayMs() {
-  const parsed = Number(process.env.REDTEAM_PROMPT_DELAY_MS ?? 1_500);
+  const parsed = Number(process.env.REDTEAM_PROMPT_DELAY_MS ?? 4_500);
 
   if (!Number.isFinite(parsed) || parsed < 0) {
-    return 1_500;
+    return 4_500;
   }
 
   return parsed;
