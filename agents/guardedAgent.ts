@@ -36,6 +36,10 @@ export type GuardedResponse = {
   toxicityMatches?: LocalToxicityMatch[];
 };
 
+export type GuardedResponseOptions = {
+  forceLive?: boolean;
+};
+
 let toxicityModelPromise: ReturnType<typeof toxicity.load> | undefined;
 let toxicityModelReadyLogged = false;
 
@@ -51,10 +55,13 @@ export function applyRegexScrubbers(text: string): string {
     );
 }
 
-export async function guardedResponse(prompt: string): Promise<GuardedResponse> {
+export async function guardedResponse(
+  prompt: string,
+  options: GuardedResponseOptions = {}
+): Promise<GuardedResponse> {
   const isCI = process.env.GITHUB_ACTIONS === "true" || process.env.CI === "true";
 
-  if (isCI) {
+  if (isCI && !options.forceLive) {
     return getCiMockResponse(prompt);
   }
 
@@ -135,7 +142,8 @@ export async function guardedResponse(prompt: string): Promise<GuardedResponse> 
   return {
     blocked: false,
     rawOutput,
-    finalOutput: applyRegexScrubbers(rawOutput)
+    finalOutput: applyRegexScrubbers(rawOutput),
+    toxicityMatches
   };
 }
 
