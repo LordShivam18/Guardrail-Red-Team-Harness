@@ -1,3 +1,4 @@
+import { ConfusionMatrix } from "@/components/ConfusionMatrix";
 import { IncidentLogTable } from "@/components/IncidentLogTable";
 import { getLatestRunIncidents } from "@/lib/redteamDashboard";
 
@@ -40,6 +41,8 @@ export async function IncidentLog() {
             Run {data.runId.slice(0, 8)} - {formatTimestamp(data.timestamp)}
           </p>
         </div>
+
+        <ConfusionMatrix incidents={data.incidents} />
 
         <IncidentLogTable incidents={data.incidents} />
       </section>
