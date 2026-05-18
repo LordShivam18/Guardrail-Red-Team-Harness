@@ -14,6 +14,7 @@ type ResultRow = {
   id: string;
   final_output: string | null;
   raw_output: string | null;
+  blocked: boolean;
   outcome_flag: OutcomeFlag;
   created_at: string;
   category: string | null;
@@ -36,6 +37,7 @@ export type IncidentLogRow = {
   outcomeFlag: OutcomeFlag;
   rawOutput: string;
   finalOutput: string;
+  blocked: boolean;
   createdAt: string;
   modelVersion: string;
   processingLatencyMs: number;
@@ -99,6 +101,7 @@ export async function getLatestRunIncidents(): Promise<IncidentLogData | null> {
       r.id,
       r.final_output,
       r.raw_output,
+      r.blocked,
       r.outcome_flag,
       r.created_at,
       p.category,
@@ -116,6 +119,7 @@ export async function getLatestRunIncidents(): Promise<IncidentLogData | null> {
     outcomeFlag: row.outcome_flag,
     rawOutput: row.raw_output ?? "No raw output captured.",
     finalOutput: row.final_output ?? row.raw_output ?? "No output captured.",
+    blocked: row.blocked,
     createdAt: row.created_at,
     modelVersion: latestRun.model_version,
     processingLatencyMs: getProcessingLatencySignature(row),
