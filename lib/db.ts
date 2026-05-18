@@ -4,6 +4,19 @@ type SqlClient = ReturnType<typeof neon>;
 type RequiredTableRow = {
   table_name: string;
 };
+type HistoricalRunRow = {
+  run_id: string;
+  timestamp: string;
+  jailbreak_rate: number;
+  fp_rate: number;
+};
+
+export type HistoricalRunSummary = {
+  runId: string;
+  timestamp: string;
+  jailbreakRate: number;
+  fpRate: number;
+};
 
 let sqlClient: SqlClient | undefined;
 const REQUIRED_SCHEMA_TABLES = [
@@ -71,4 +84,35 @@ export async function assertRequiredTablesExist(
   }
 
   console.log(`[db] Schema check passed for table(s): ${tableNames.join(", ")}.`);
+}
+
+export async function getHistoricalRunSummary(
+  limit: number = 7
+): Promise<HistoricalRunSummary[]> {
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 50);
+  const rows = (await sql`
+    select
+      id as run_id,
+      timestamp,
+      jailbreak_rate,
+      fp_rate
+    from (
+      select
+        id,
+        timestamp,
+        jailbreak_rate,
+        fp_rate
+      from redteam_runs
+      order by timestamp desc
+      limit ${safeLimit}
+    ) recent_runs
+    order by timestamp asc
+  `) as HistoricalRunRow[];
+
+  return rows.map((row) => ({
+    runId: row.run_id,
+    timestamp: row.timestamp,
+    jailbreakRate: row.jailbreak_rate,
+    fpRate: row.fp_rate
+  }));
 }
