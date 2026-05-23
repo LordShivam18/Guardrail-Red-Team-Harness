@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { ExportReportButton } from "@/components/ExportReportButton";
 import { HistoricalTrend } from "@/components/HistoricalTrend";
 import { IncidentLog } from "@/components/IncidentLog";
 import { RefreshButton } from "@/components/RefreshButton";
@@ -57,7 +58,10 @@ export function DashboardShell() {
             </p>
           </div>
 
-          <RefreshButton />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+            <ExportReportButton />
+            <RefreshButton />
+          </div>
         </header>
 
         <Suspense fallback={<TrendSkeleton />}>
