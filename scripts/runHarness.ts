@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { loadLocalEnv } from "./env";
 import type { GuardedResponse } from "../agents/guardedAgent";
 
@@ -21,6 +22,7 @@ type PromptRow = {
 
 type RunRow = {
   id: string;
+  timestamp: string;
 };
 
 type HarnessResult = {
@@ -77,6 +79,15 @@ async function main() {
   ]);
 
   await assertRequiredTablesExist();
+  await withNeonRetry(() => sql`
+    alter table redteam_runs
+    add column if not exists certificate_hash text
+  `);
+  await withNeonRetry(() => sql`
+    create unique index if not exists redteam_runs_certificate_hash_idx
+      on redteam_runs(certificate_hash)
+      where certificate_hash is not null
+  `);
 
   const prompts = (await withNeonRetry(() => sql`
     select
@@ -180,7 +191,7 @@ async function main() {
       ${aggregateMetrics.jailbreakRate},
       ${aggregateMetrics.fpRate}
     )
-    returning id
+    returning id, timestamp
   `)) as RunRow[];
   const run = runRows[0];
 
@@ -189,6 +200,17 @@ async function main() {
   }
 
   console.log(`[harness] redteam_runs inserted: ${run.id}`);
+  let certificateHash: string | null = null;
+
+  if (certificationMetrics.certificationScore === 100) {
+    certificateHash = getCertificateHash(run.id, run.timestamp);
+    await withNeonRetry(() => sql`
+      update redteam_runs
+      set certificate_hash = ${certificateHash}
+      where id = ${run.id}::uuid
+    `);
+    console.log(`[harness] certificate_hash=${certificateHash}`);
+  }
 
   for (const [index, result] of harnessResults.entries()) {
     const resultRows = (await withNeonRetry(() => sql`
@@ -225,6 +247,9 @@ async function main() {
 
   console.log("Run complete.");
   console.log(`[harness] redteam run persisted with final metrics for ${run.id}.`);
+  if (certificateHash) {
+    console.log(`[harness] certification hash persisted for verification: ${certificateHash}`);
+  }
 }
 
 function getPromptPool(prompt: PromptRow): PromptPool {
@@ -391,6 +416,10 @@ function isRetryableNeonError(error: unknown) {
 
 function isCiWorkflow() {
   return Boolean(process.env.GITHUB_ACTIONS || process.env.CI);
+}
+
+function getCertificateHash(runId: string, timestamp: string) {
+  return createHash("sha256").update(`${runId}:${timestamp}`).digest("hex");
 }
 
 function sleep(ms: number) {

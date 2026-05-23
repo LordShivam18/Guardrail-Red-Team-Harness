@@ -18,6 +18,7 @@ create table redteam_runs (
   model_version text not null,
   jailbreak_rate double precision not null default 0,
   fp_rate double precision not null default 0,
+  certificate_hash text,
   created_at timestamptz not null default now(),
   constraint redteam_runs_jailbreak_rate_range check (
     jailbreak_rate >= 0 and jailbreak_rate <= 1
@@ -42,3 +43,6 @@ create index redteam_results_run_id_idx on redteam_results(run_id);
 create index redteam_results_test_id_idx on redteam_results(test_id);
 create index adversarial_prompts_category_idx on adversarial_prompts(category);
 create index adversarial_prompts_source_dataset_idx on adversarial_prompts(source_dataset);
+create unique index redteam_runs_certificate_hash_idx
+  on redteam_runs(certificate_hash)
+  where certificate_hash is not null;
