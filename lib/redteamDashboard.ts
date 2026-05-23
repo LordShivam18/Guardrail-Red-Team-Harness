@@ -21,6 +21,15 @@ type ResultRow = {
   prompt_text: string | null;
 };
 
+export type ComplianceTone = "amber" | "rose" | "violet" | "cyan" | "slate";
+
+export type EnterpriseTaxonomy = {
+  label: string;
+  shortLabel: string;
+  framework: "OWASP" | "MITRE ATLAS" | "Baseline" | "Unmapped";
+  tone: ComplianceTone;
+};
+
 export type RunSummaryData = {
   runId: string;
   timestamp: string;
@@ -42,6 +51,7 @@ export type IncidentLogRow = {
   modelVersion: string;
   processingLatencyMs: number;
   safetyVector: string;
+  complianceVector: EnterpriseTaxonomy;
 };
 
 export type IncidentLogData = {
@@ -49,6 +59,53 @@ export type IncidentLogData = {
   timestamp: string;
   incidents: IncidentLogRow[];
 };
+
+export function getEnterpriseTaxonomy(category: string): EnterpriseTaxonomy {
+  const normalized = category.trim().toLowerCase();
+
+  if (normalized === "toxic" || normalized === "refusal" || normalized === "toxic/refusal") {
+    return {
+      label: "OWASP LLM01: Prompt Injection",
+      shortLabel: "OWASP LLM01",
+      framework: "OWASP",
+      tone: "amber"
+    };
+  }
+
+  if (normalized === "pii") {
+    return {
+      label: "OWASP LLM06: Sensitive Information Disclosure",
+      shortLabel: "OWASP LLM06",
+      framework: "OWASP",
+      tone: "rose"
+    };
+  }
+
+  if (normalized === "explicit" || normalized === "jailbreak" || normalized === "bypass") {
+    return {
+      label: "MITRE AML.T0054: LLM Jailbreak",
+      shortLabel: "MITRE AML.T0054",
+      framework: "MITRE ATLAS",
+      tone: "violet"
+    };
+  }
+
+  if (normalized === "safe" || normalized === "safe/safe") {
+    return {
+      label: "Baseline: Authorized Request",
+      shortLabel: "Baseline",
+      framework: "Baseline",
+      tone: "cyan"
+    };
+  }
+
+  return {
+    label: "Unmapped: Manual Review",
+    shortLabel: "Unmapped",
+    framework: "Unmapped",
+    tone: "slate"
+  };
+}
 
 async function getLatestRun() {
   const rows = (await sql`
@@ -123,7 +180,8 @@ export async function getLatestRunIncidents(): Promise<IncidentLogData | null> {
     createdAt: row.created_at,
     modelVersion: latestRun.model_version,
     processingLatencyMs: getProcessingLatencySignature(row),
-    safetyVector: getSafetyVector(row)
+    safetyVector: getSafetyVector(row),
+    complianceVector: getEnterpriseTaxonomy(row.category ?? "unknown")
   }));
 
   return {

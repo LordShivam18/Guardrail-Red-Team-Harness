@@ -22,7 +22,7 @@ const CORE_ENGINE_TARGET = "Gemini-2.0-Flash-Guarded-v1";
 type MetadataCard = {
   label: string;
   value: string;
-  tone: "neutral" | "danger" | "safe" | "warning";
+  tone: "neutral" | "danger" | "safe" | "warning" | "info" | "mitre";
 };
 
 type RuleFlag = {
@@ -166,8 +166,44 @@ function metadataToneClasses(tone: MetadataCard["tone"]) {
       return "border-emerald-400/30 bg-emerald-400/10 text-emerald-100";
     case "warning":
       return "border-amber-300/30 bg-amber-300/10 text-amber-100";
+    case "info":
+      return "border-cyan-300/30 bg-cyan-400/10 text-cyan-100";
+    case "mitre":
+      return "border-violet-300/30 bg-violet-400/10 text-violet-100";
     default:
       return "border-slate-700/80 bg-slate-900/55 text-slate-100";
+  }
+}
+
+function complianceToneClasses(tone: IncidentLogRow["complianceVector"]["tone"]) {
+  switch (tone) {
+    case "amber":
+      return "border-amber-300/40 bg-amber-300/15 text-amber-100 shadow-[0_0_18px_rgba(252,211,77,0.12)]";
+    case "rose":
+      return "border-rose-300/35 bg-rose-500/15 text-rose-100 shadow-[0_0_18px_rgba(251,113,133,0.12)]";
+    case "violet":
+      return "border-violet-300/35 bg-violet-400/15 text-violet-100 shadow-[0_0_18px_rgba(167,139,250,0.12)]";
+    case "cyan":
+      return "border-cyan-300/35 bg-cyan-400/10 text-cyan-100 shadow-[0_0_18px_rgba(103,232,249,0.12)]";
+    default:
+      return "border-slate-600 bg-slate-800/70 text-slate-200";
+  }
+}
+
+function complianceMetadataTone(
+  tone: IncidentLogRow["complianceVector"]["tone"]
+): MetadataCard["tone"] {
+  switch (tone) {
+    case "amber":
+      return "warning";
+    case "rose":
+      return "danger";
+    case "violet":
+      return "mitre";
+    case "cyan":
+      return "info";
+    default:
+      return "neutral";
   }
 }
 
@@ -288,6 +324,11 @@ function AttemptDetailDrawer({
       label: "Safety Profile",
       value: incident.safetyVector,
       tone: incident.blocked ? "danger" : "safe"
+    },
+    {
+      label: "Compliance Vector",
+      value: incident.complianceVector.label,
+      tone: complianceMetadataTone(incident.complianceVector.tone)
     }
   ];
   const ruleFlags = getRuleFlags(incident);
@@ -328,7 +369,7 @@ function AttemptDetailDrawer({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-5">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {metadata.map((item) => (
               <section
                 className={`rounded-lg border p-4 ${metadataToneClasses(item.tone)}`}
@@ -472,7 +513,7 @@ export function IncidentLogTable({ incidents }: IncidentLogTableProps) {
         <table className="min-w-full table-fixed border-collapse">
           <thead className="bg-slate-900/80">
             <tr className="border-b border-slate-800 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-              <th className="w-36 px-4 py-3">Category</th>
+              <th className="w-64 px-4 py-3">Category</th>
               <th className="w-80 px-4 py-3">Prompt</th>
               <th className="w-48 px-4 py-3">Outcome</th>
               <th className="w-44 px-4 py-3">Safety Vector</th>
@@ -489,7 +530,7 @@ export function IncidentLogTable({ incidents }: IncidentLogTableProps) {
             ) : (
               visibleIncidents.map((incident) => (
                 <tr
-                  aria-label={`Open details for ${formatCategory(incident.category)} attempt`}
+                  aria-label={`Open details for ${incident.complianceVector.label} attempt`}
                   aria-selected={selectedAttemptId === incident.id}
                   className={`cursor-pointer align-top transition focus:outline-none ${
                     selectedAttemptId === incident.id
@@ -502,8 +543,15 @@ export function IncidentLogTable({ incidents }: IncidentLogTableProps) {
                   tabIndex={0}
                 >
                   <td className="px-4 py-4">
-                    <span className="text-sm font-semibold text-slate-200">
-                      {formatCategory(incident.category)}
+                    <span
+                      className={`inline-flex max-w-full flex-col rounded-lg border px-2.5 py-2 text-xs font-semibold ${complianceToneClasses(
+                        incident.complianceVector.tone
+                      )}`}
+                    >
+                      <span className="text-[11px] uppercase text-slate-400">
+                        {incident.complianceVector.framework}
+                      </span>
+                      <span className="mt-1 leading-5">{incident.complianceVector.label}</span>
                     </span>
                   </td>
                   <td className="px-4 py-4">
