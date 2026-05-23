@@ -22,6 +22,12 @@ type SandboxSignals = {
       confidence: number;
     }[];
   };
+  judge: {
+    evaluated: boolean;
+    isSafe: boolean | null;
+    confidenceScore: number | null;
+    reason: string | null;
+  };
   sanitizer: {
     changed: boolean;
     redactedCreditCard: boolean;
@@ -79,6 +85,15 @@ function getSandboxSignals(
         label: match.label,
         confidence: Number(match.probability.toFixed(4))
       }))
+    },
+    judge: {
+      evaluated: Boolean(response.judgeEvaluation),
+      isSafe: response.judgeEvaluation?.isSafe ?? null,
+      confidenceScore:
+        response.judgeEvaluation?.confidenceScore === undefined
+          ? null
+          : Number(response.judgeEvaluation.confidenceScore.toFixed(4)),
+      reason: response.judgeEvaluation?.reason ?? null
     },
     sanitizer: {
       changed: response.rawOutput !== response.finalOutput,

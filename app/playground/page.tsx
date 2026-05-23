@@ -25,6 +25,12 @@ type SandboxResult = {
         confidence: number;
       }[];
     };
+    judge: {
+      evaluated: boolean;
+      isSafe: boolean | null;
+      confidenceScore: number | null;
+      reason: string | null;
+    };
     sanitizer: {
       changed: boolean;
       redactedCreditCard: boolean;
@@ -81,6 +87,9 @@ function getHeuristics(result: SandboxResult): HeuristicCard[] {
     : result.signals.toxicity.evaluated
       ? "No local toxicity labels crossed threshold"
       : "Skipped after upstream safety block";
+  const judge = result.signals.judge;
+  const judgeConfidence =
+    judge.confidenceScore === null ? null : `${(judge.confidenceScore * 100).toFixed(1)}%`;
 
   return [
     {
@@ -94,6 +103,16 @@ function getHeuristics(result: SandboxResult): HeuristicCard[] {
       value: toxicityDetected ? "DETECTED" : result.signals.toxicity.evaluated ? "PASSED" : "SKIPPED",
       detail: toxicityDetail,
       tone: toxicityDetected ? "danger" : result.signals.toxicity.evaluated ? "safe" : "neutral"
+    },
+    {
+      label: "LLM Judge",
+      value: judge.evaluated ? (judge.isSafe ? "SAFE" : "UNSAFE") : "SKIPPED",
+      detail: judge.evaluated
+        ? `${judge.reason ?? "No semantic reason returned"}${
+            judgeConfidence ? ` (${judgeConfidence})` : ""
+          }`
+        : "Semantic judge did not evaluate this exchange",
+      tone: judge.evaluated ? (judge.isSafe ? "safe" : "danger") : "neutral"
     },
     {
       label: "Regex Heuristics",
@@ -330,7 +349,7 @@ export default function PlaygroundPage() {
                   </article>
                 </div>
 
-                <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                   {heuristics.map((card) => (
                     <article
                       className={`rounded-lg border p-4 ${getCardClasses(card.tone)}`}

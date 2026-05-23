@@ -6,6 +6,11 @@ import {
 } from "@google/generative-ai";
 import * as tf from "@tensorflow/tfjs";
 import * as toxicity from "@tensorflow-models/toxicity";
+import {
+  evaluateSecurityResponse,
+  getMockJudgeEvaluation
+} from "./judgeAgent";
+import type { JudgeEvaluation } from "./judgeAgent";
 
 const SAFETY_REFUSAL = "I am sorry, but I cannot assist with that request.";
 const CI_SAFETY_REFUSAL =
@@ -37,12 +42,17 @@ export type GuardedResponse = {
   modelName: string;
   blockReason?: BlockReason;
   toxicityMatches?: LocalToxicityMatch[];
+  judgeEvaluation?: JudgeEvaluation;
 };
 
 export type GuardedResponseOptions = {
   forceLive?: boolean;
   targetModel?: string;
   apiKey?: string;
+  judgeApiKey?: string;
+  judgeModelName?: string;
+  skipJudge?: boolean;
+  forceLiveJudge?: boolean;
 };
 
 export type ModelProviderRequest = {
@@ -107,13 +117,16 @@ export async function guardedResponse(
         modelResult.blockDetail ?? "unknown"
       }`
     );
+    const finalOutput = SAFETY_REFUSAL;
+    const judgeEvaluation = await getJudgeEvaluation(prompt, finalOutput, options, isCI);
 
     return {
       blocked: true,
       rawOutput: modelResult.rawOutput,
-      finalOutput: SAFETY_REFUSAL,
+      finalOutput,
       modelName: modelResult.modelName,
-      blockReason: modelResult.blockReason
+      blockReason: modelResult.blockReason,
+      judgeEvaluation
     };
   }
 
@@ -124,23 +137,61 @@ export async function guardedResponse(
   const toxicityMatches = await getLocalToxicityMatches(rawOutput);
 
   if (toxicityMatches.length > 0) {
+    const finalOutput = SAFETY_REFUSAL;
+    const judgeEvaluation = await getJudgeEvaluation(prompt, finalOutput, options, isCI);
+
     return {
       blocked: true,
       rawOutput,
-      finalOutput: SAFETY_REFUSAL,
+      finalOutput,
       modelName: modelResult.modelName,
       blockReason: "local_toxicity",
-      toxicityMatches
+      toxicityMatches,
+      judgeEvaluation
     };
   }
+
+  const finalOutput = applyRegexScrubbers(rawOutput);
+  const judgeEvaluation = await getJudgeEvaluation(prompt, finalOutput, options, isCI);
 
   return {
     blocked: false,
     rawOutput,
-    finalOutput: applyRegexScrubbers(rawOutput),
+    finalOutput,
     modelName: modelResult.modelName,
-    toxicityMatches
+    toxicityMatches,
+    judgeEvaluation
   };
+}
+
+async function getJudgeEvaluation(
+  prompt: string,
+  finalOutput: string,
+  options: GuardedResponseOptions,
+  isCI: boolean
+) {
+  if (options.skipJudge) {
+    return undefined;
+  }
+
+  if (isCI && !options.forceLiveJudge) {
+    return getMockJudgeEvaluation(prompt, finalOutput);
+  }
+
+  const judgeEvaluation = await evaluateSecurityResponse({
+    userAttackPrompt: prompt,
+    targetModelResponse: finalOutput,
+    apiKey: options.judgeApiKey ?? options.apiKey,
+    modelName: options.judgeModelName
+  });
+
+  console.log(
+    `[judge] isSafe=${judgeEvaluation.isSafe} confidence=${judgeEvaluation.confidenceScore.toFixed(
+      2
+    )} reason=${judgeEvaluation.reason}`
+  );
+
+  return judgeEvaluation;
 }
 
 function normalizeModelName(modelName?: string) {
@@ -282,20 +333,26 @@ async function getCiMockResponse(
   await sleep(200);
 
   if (isAdversarialCiPrompt(prompt)) {
+    const judgeEvaluation = getMockJudgeEvaluation(prompt, CI_SAFETY_REFUSAL);
+
     return {
       blocked: true,
       rawOutput: CI_SAFETY_REFUSAL,
       finalOutput: CI_SAFETY_REFUSAL,
       modelName,
-      blockReason: "ci_mock"
+      blockReason: "ci_mock",
+      judgeEvaluation
     };
   }
+
+  const judgeEvaluation = getMockJudgeEvaluation(prompt, CI_SAFE_COMPLETION);
 
   return {
     blocked: false,
     rawOutput: CI_SAFE_COMPLETION,
     finalOutput: CI_SAFE_COMPLETION,
-    modelName
+    modelName,
+    judgeEvaluation
   };
 }
 
