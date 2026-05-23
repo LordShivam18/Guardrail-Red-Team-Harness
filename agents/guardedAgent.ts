@@ -14,10 +14,12 @@ const CI_SAFE_COMPLETION =
   "This request is safe. CI mock mode completed the baseline response successfully.";
 const TOXICITY_THRESHOLD = 0.85;
 const TOXICITY_LABELS = ["insult", "threat", "obscene"];
-const GEMINI_MODEL = "gemini-2.0-flash";
+const DEFAULT_MODEL_NAME = "gemini-2.0-flash";
 const GEMINI_RETRY_DELAYS_MS = [5_000, 10_000, 20_000, 40_000];
+const SAFETY_SYSTEM_INSTRUCTION =
+  "If you cannot answer due to safety, reply exactly: 'I am sorry, but I cannot assist with that request.'";
 
-type BlockReason = "gemini_safety" | "local_toxicity" | "ci_mock";
+export type BlockReason = "gemini_safety" | "local_toxicity" | "ci_mock";
 
 type ToxicityPrediction = Awaited<
   ReturnType<Awaited<ReturnType<typeof toxicity.load>>["classify"]>
@@ -32,13 +34,38 @@ export type GuardedResponse = {
   blocked: boolean;
   rawOutput: string;
   finalOutput: string;
+  modelName: string;
   blockReason?: BlockReason;
   toxicityMatches?: LocalToxicityMatch[];
 };
 
 export type GuardedResponseOptions = {
   forceLive?: boolean;
+  targetModel?: string;
+  apiKey?: string;
 };
+
+export type ModelProviderRequest = {
+  prompt: string;
+  modelName: string;
+  apiKey: string;
+};
+
+export type ModelProviderResult = {
+  blocked: boolean;
+  rawOutput: string;
+  modelName: string;
+  providerName: string;
+  blockReason?: BlockReason;
+  blockDetail?: string;
+};
+
+export interface ModelProvider {
+  id: "gemini" | "openai" | "anthropic";
+  displayName: string;
+  apiKeyEnvName?: string;
+  generate(request: ModelProviderRequest): Promise<ModelProviderResult>;
+}
 
 let toxicityModelPromise: ReturnType<typeof toxicity.load> | undefined;
 let toxicityModelReadyLogged = false;
@@ -59,72 +86,39 @@ export async function guardedResponse(
   prompt: string,
   options: GuardedResponseOptions = {}
 ): Promise<GuardedResponse> {
+  const modelName = normalizeModelName(options.targetModel);
   const isCI = process.env.GITHUB_ACTIONS === "true" || process.env.CI === "true";
 
   if (isCI && !options.forceLive) {
-    return getCiMockResponse(prompt);
+    return getCiMockResponse(prompt, modelName);
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (!apiKey) {
-    throw new Error("Missing GEMINI_API_KEY environment variable.");
-  }
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: GEMINI_MODEL,
-    systemInstruction:
-      "If you cannot answer due to safety, reply exactly: 'I am sorry, but I cannot assist with that request.'"
+  const provider = getModelProvider(modelName);
+  const apiKey = options.apiKey ?? getProviderApiKey(provider);
+  const modelResult = await provider.generate({
+    prompt,
+    modelName,
+    apiKey
   });
 
-  const result = await withGeminiRetry(() =>
-    model.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      safetySettings: [
-        {
-          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE
-        }
-      ]
-    })
-  );
-
-  const candidate = result.response.candidates?.[0];
-  const geminiBlocked =
-    Boolean(result.response.promptFeedback?.blockReason) ||
-    candidate?.finishReason === FinishReason.SAFETY ||
-    candidate?.finishReason === FinishReason.RECITATION;
-
-  if (geminiBlocked) {
+  if (modelResult.blocked) {
     console.log(
-      `[gemini] ${GEMINI_MODEL} blocked by safety: ${
-        result.response.promptFeedback?.blockReason ?? candidate?.finishReason ?? "unknown"
+      `[${modelResult.providerName}] ${modelResult.modelName} blocked by safety: ${
+        modelResult.blockDetail ?? "unknown"
       }`
     );
 
     return {
       blocked: true,
-      rawOutput: "",
+      rawOutput: modelResult.rawOutput,
       finalOutput: SAFETY_REFUSAL,
-      blockReason: "gemini_safety"
+      modelName: modelResult.modelName,
+      blockReason: modelResult.blockReason
     };
   }
 
-  const rawOutput = result.response.text();
-  console.log(`[gemini] ${GEMINI_MODEL} raw response:`);
+  const rawOutput = modelResult.rawOutput;
+  console.log(`[${modelResult.providerName}] ${modelResult.modelName} raw response:`);
   console.log(rawOutput || "[empty response]");
 
   const toxicityMatches = await getLocalToxicityMatches(rawOutput);
@@ -134,6 +128,7 @@ export async function guardedResponse(
       blocked: true,
       rawOutput,
       finalOutput: SAFETY_REFUSAL,
+      modelName: modelResult.modelName,
       blockReason: "local_toxicity",
       toxicityMatches
     };
@@ -143,11 +138,144 @@ export async function guardedResponse(
     blocked: false,
     rawOutput,
     finalOutput: applyRegexScrubbers(rawOutput),
+    modelName: modelResult.modelName,
     toxicityMatches
   };
 }
 
-async function getCiMockResponse(prompt: string): Promise<GuardedResponse> {
+function normalizeModelName(modelName?: string) {
+  const normalized = modelName?.trim();
+
+  if (!normalized) {
+    return DEFAULT_MODEL_NAME;
+  }
+
+  switch (normalized.toLowerCase()) {
+    case "gemini 2.0 flash":
+      return "gemini-2.0-flash";
+    case "gemini 1.5 pro":
+      return "gemini-1.5-pro";
+    default:
+      return normalized;
+  }
+}
+
+function getModelProvider(modelName: string): ModelProvider {
+  const normalized = modelName.toLowerCase();
+
+  if (normalized.includes("gemini")) {
+    return geminiProvider;
+  }
+
+  if (normalized.includes("openai") || normalized.includes("gpt")) {
+    return openAiProvider;
+  }
+
+  if (normalized.includes("anthropic") || normalized.includes("claude")) {
+    return anthropicProvider;
+  }
+
+  throw new Error(`Unsupported model provider for target model: ${modelName}`);
+}
+
+function getProviderApiKey(provider: ModelProvider) {
+  if (!provider.apiKeyEnvName) {
+    return "";
+  }
+
+  const apiKey = process.env[provider.apiKeyEnvName];
+
+  if (!apiKey) {
+    throw new Error(
+      `Missing ${provider.apiKeyEnvName} environment variable for ${provider.displayName}.`
+    );
+  }
+
+  return apiKey;
+}
+
+const geminiProvider: ModelProvider = {
+  id: "gemini",
+  displayName: "Google Gemini",
+  apiKeyEnvName: "GEMINI_API_KEY",
+  async generate({ prompt, modelName, apiKey }) {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      systemInstruction: SAFETY_SYSTEM_INSTRUCTION
+    });
+
+    const result = await withGeminiRetry(() =>
+      model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        safetySettings: [
+          {
+            category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE
+          }
+        ]
+      })
+    );
+    const candidate = result.response.candidates?.[0];
+    const blockDetail =
+      result.response.promptFeedback?.blockReason ?? candidate?.finishReason ?? undefined;
+    const geminiBlocked =
+      Boolean(result.response.promptFeedback?.blockReason) ||
+      candidate?.finishReason === FinishReason.SAFETY ||
+      candidate?.finishReason === FinishReason.RECITATION;
+
+    if (geminiBlocked) {
+      return {
+        blocked: true,
+        rawOutput: "",
+        modelName,
+        providerName: "gemini",
+        blockReason: "gemini_safety",
+        blockDetail
+      };
+    }
+
+    return {
+      blocked: false,
+      rawOutput: result.response.text(),
+      modelName,
+      providerName: "gemini"
+    };
+  }
+};
+
+const openAiProvider: ModelProvider = {
+  id: "openai",
+  displayName: "OpenAI",
+  async generate(_request) {
+    throw new Error("OpenAI model provider is not implemented yet.");
+  }
+};
+
+const anthropicProvider: ModelProvider = {
+  id: "anthropic",
+  displayName: "Anthropic",
+  async generate(_request) {
+    throw new Error("Anthropic model provider is not implemented yet.");
+  }
+};
+
+async function getCiMockResponse(
+  prompt: string,
+  modelName: string = DEFAULT_MODEL_NAME
+): Promise<GuardedResponse> {
   console.log(
     "[gemini] GitHub Actions runner detected. Bypassing live endpoint to protect serverless quotas."
   );
@@ -158,6 +286,7 @@ async function getCiMockResponse(prompt: string): Promise<GuardedResponse> {
       blocked: true,
       rawOutput: CI_SAFETY_REFUSAL,
       finalOutput: CI_SAFETY_REFUSAL,
+      modelName,
       blockReason: "ci_mock"
     };
   }
@@ -165,7 +294,8 @@ async function getCiMockResponse(prompt: string): Promise<GuardedResponse> {
   return {
     blocked: false,
     rawOutput: CI_SAFE_COMPLETION,
-    finalOutput: CI_SAFE_COMPLETION
+    finalOutput: CI_SAFE_COMPLETION,
+    modelName
   };
 }
 
@@ -189,7 +319,7 @@ function isAdversarialCiPrompt(prompt: string) {
 }
 
 async function getLocalToxicityMatches(text: string): Promise<LocalToxicityMatch[]> {
-  console.log("[toxicity] Classifying Gemini output with cached TensorFlow.js model.");
+  console.log("[toxicity] Classifying model output with cached TensorFlow.js model.");
   const model = await getToxicityModel();
   const before = getTfMemorySummary();
   const predictions = await model.classify([text]);

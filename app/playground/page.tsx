@@ -6,6 +6,7 @@ import Link from "next/link";
 
 type SandboxResult = {
   prompt: string;
+  targetModel: string;
   output: string;
   blocked: boolean;
   latency: number;
@@ -38,6 +39,20 @@ type HeuristicCard = {
   detail: string;
   tone: "safe" | "danger" | "warning" | "neutral";
 };
+
+const TARGET_MODELS = [
+  {
+    label: "Gemini 2.0 Flash",
+    value: "gemini-2.0-flash",
+    detail: "Fast live guardrail target"
+  },
+  {
+    label: "Gemini 1.5 Pro",
+    value: "gemini-1.5-pro",
+    detail: "Deeper Gemini evaluation target"
+  }
+] as const;
+type TargetModelValue = (typeof TARGET_MODELS)[number]["value"];
 
 function getCardClasses(tone: HeuristicCard["tone"]) {
   switch (tone) {
@@ -109,6 +124,7 @@ function getHeuristics(result: SandboxResult): HeuristicCard[] {
 
 export default function PlaygroundPage() {
   const [inputPrompt, setInputPrompt] = useState("");
+  const [targetModel, setTargetModel] = useState<TargetModelValue>(TARGET_MODELS[0].value);
   const [evaluationResult, setEvaluationResult] = useState<SandboxResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -135,7 +151,7 @@ export default function PlaygroundPage() {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ prompt: inputPrompt })
+        body: JSON.stringify({ prompt: inputPrompt, targetModel })
       });
       const payload = (await response.json()) as SandboxResult | { error?: string };
 
@@ -175,6 +191,42 @@ export default function PlaygroundPage() {
         </header>
 
         <form className="grid gap-4" onSubmit={handleSubmit}>
+          <div className="grid gap-3 rounded-lg border border-white/10 bg-slate-950/70 p-4 shadow-xl shadow-black/20 backdrop-blur-xl md:grid-cols-[1fr_18rem] md:items-end">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">
+                Target Model
+              </p>
+              <p className="mt-2 text-sm text-slate-500">
+                Route the same guardrail stack across BYOM-compatible providers.
+              </p>
+            </div>
+            <label className="grid gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Provider Endpoint
+              </span>
+              <select
+                className="h-11 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm font-semibold text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] outline-none transition hover:border-emerald-300/50 focus:border-emerald-300/70 focus:ring-2 focus:ring-emerald-300/25"
+                onChange={(event) =>
+                  setTargetModel(event.target.value as TargetModelValue)
+                }
+                value={targetModel}
+              >
+                {TARGET_MODELS.map((model) => (
+                  <option
+                    className="bg-slate-950 text-slate-100"
+                    key={model.value}
+                    value={model.value}
+                  >
+                    {model.label}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-slate-500">
+                {TARGET_MODELS.find((model) => model.value === targetModel)?.detail}
+              </span>
+            </label>
+          </div>
+
           <div className="overflow-hidden rounded-lg border border-white/10 bg-slate-950/80 shadow-2xl shadow-black/30 backdrop-blur-xl">
             <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.03] px-4 py-3">
               <p className="font-mono text-xs text-slate-400">adversarial-prompt.txt</p>
@@ -231,6 +283,9 @@ export default function PlaygroundPage() {
                     </span>
                     <span className="rounded-full border border-cyan-300/25 bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-100">
                       Latency: {evaluationResult.latency}ms
+                    </span>
+                    <span className="rounded-full border border-slate-600 bg-slate-900/70 px-3 py-1 text-xs font-semibold text-slate-200">
+                      Model: {evaluationResult.targetModel}
                     </span>
                   </>
                 ) : (
