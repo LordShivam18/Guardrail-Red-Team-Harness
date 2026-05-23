@@ -7,7 +7,7 @@ services:
       - "3000:3000"
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgres://postgres:postgres@db:5432/guardrail
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to a Postgres URL targeting the db service}
       REDIS_URL: redis://redis:6379
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     depends_on:
@@ -19,7 +19,7 @@ services:
     environment:
       POSTGRES_DB: guardrail
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD before running docker compose}
     ports:
       - "5432:5432"
     volumes:
