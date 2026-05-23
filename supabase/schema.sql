@@ -8,6 +8,7 @@ create table adversarial_prompts (
   prompt_text text not null,
   expected_outcome expected_outcome not null,
   category text not null,
+  source_dataset text not null default 'local-seed',
   created_at timestamptz not null default now()
 );
 
@@ -40,3 +41,4 @@ create table redteam_results (
 create index redteam_results_run_id_idx on redteam_results(run_id);
 create index redteam_results_test_id_idx on redteam_results(test_id);
 create index adversarial_prompts_category_idx on adversarial_prompts(category);
+create index adversarial_prompts_source_dataset_idx on adversarial_prompts(source_dataset);
