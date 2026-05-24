@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
 import { loadLocalEnv } from "./env";
+import {
+  generateRegulatoryAuditReport,
+  inferRegulatoryTagsFromCategory
+} from "../lib/regulatoryMapper";
 import { calculateSafetyVolatility } from "../lib/statisticalAnalysis";
 import type { GuardedResponse } from "../agents/guardedAgent";
+import type { RegulatoryAuditReport } from "../lib/regulatoryMapper";
 import type { SafetyVolatilityMetrics } from "../lib/statisticalAnalysis";
 
 const MODEL_VERSION = "Gemini-2.0-Flash-Guarded-v1";
@@ -57,6 +62,12 @@ type CertificationMetrics = {
   certificationScore: number;
   isSystemCertified: boolean;
   skippedCertificationGate: boolean;
+};
+
+type RegulatoryAuditRequirement = RegulatoryAuditReport & {
+  owaspTag: string;
+  mitreTag: string;
+  affectedTestCount: number;
 };
 
 export function classifyOutcome(
@@ -187,10 +198,12 @@ async function main() {
   const aggregateMetrics = getAggregateMetrics(harnessResults);
   const certificationMetrics = getCertificationMetrics(harnessResults);
   const safetyVolatilityMetrics = calculateSafetyVolatility(safetyConfidenceScores);
+  const regulatoryAuditRequirements = getRegulatoryAuditRequirements(harnessResults);
 
   printAggregateSummary(aggregateMetrics);
   printCertificationSummary(certificationMetrics);
   printSafetyVolatilitySummary(safetyVolatilityMetrics);
+  printRegulatoryAuditRequirements(regulatoryAuditRequirements);
 
   if (isCiWorkflow() && !certificationMetrics.isSystemCertified) {
     printCriticalCertificationFailure(certificationMetrics);
@@ -399,6 +412,69 @@ function printSafetyVolatilitySummary(metrics: SafetyVolatilityMetrics) {
   console.log(`  safety_variance: ${metrics.variance.toFixed(6)}`);
   console.log(`  safety_sharpe: ${metrics.safetySharpeRatio.toFixed(4)}`);
   console.log(`  baseline_threshold: ${metrics.baselineThreshold.toFixed(4)}`);
+}
+
+function getRegulatoryAuditRequirements(
+  results: HarnessResult[]
+): RegulatoryAuditRequirement[] {
+  const requirementMap = new Map<string, RegulatoryAuditRequirement>();
+
+  for (const result of results) {
+    const tags = inferRegulatoryTagsFromCategory(result.prompt.category);
+
+    if (!tags.owaspTag && !tags.mitreTag) {
+      continue;
+    }
+
+    const report = generateRegulatoryAuditReport(tags.owaspTag, tags.mitreTag);
+    const key = [
+      tags.owaspTag,
+      tags.mitreTag,
+      report.euAiActClause,
+      report.nistRmfPillar,
+      report.isoControl
+    ].join("|");
+    const existingRequirement = requirementMap.get(key);
+
+    if (existingRequirement) {
+      existingRequirement.affectedTestCount += 1;
+    } else {
+      requirementMap.set(key, {
+        owaspTag: tags.owaspTag,
+        mitreTag: tags.mitreTag,
+        affectedTestCount: 1,
+        ...report
+      });
+    }
+  }
+
+  return [...requirementMap.values()].sort((left, right) => {
+    if (right.affectedTestCount !== left.affectedTestCount) {
+      return right.affectedTestCount - left.affectedTestCount;
+    }
+
+    return `${left.owaspTag}${left.mitreTag}`.localeCompare(`${right.owaspTag}${right.mitreTag}`);
+  });
+}
+
+function printRegulatoryAuditRequirements(requirements: RegulatoryAuditRequirement[]) {
+  console.log("[harness] Regulatory Compliance & Audit Requirements:");
+
+  if (requirements.length === 0) {
+    console.log("  No mapped regulatory audit requirements were triggered in this run.");
+    return;
+  }
+
+  console.log(
+    "  Taxonomy | Affected Tests | EU AI Act Clause | NIST/GDPR Requirement | ISO/IEC 42001 Control"
+  );
+
+  for (const requirement of requirements) {
+    const taxonomy = [requirement.owaspTag, requirement.mitreTag].filter(Boolean).join(" / ");
+    console.log(
+      `  ${taxonomy} | ${requirement.affectedTestCount} | ${requirement.euAiActClause} | ${requirement.nistRmfPillar} | ${requirement.isoControl}`
+    );
+  }
 }
 
 function printCriticalCertificationFailure(metrics: CertificationMetrics) {

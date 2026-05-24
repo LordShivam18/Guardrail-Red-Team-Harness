@@ -3,6 +3,7 @@ import IORedis from "ioredis";
 import type { JobsOptions } from "bullmq";
 import type { JudgeEvaluation } from "../agents/judgeAgent";
 import type { LocalToxicityMatch } from "../agents/guardedAgent";
+import type { ComputeTelemetry } from "./computeMonitor";
 
 export const EVALUATION_QUEUE_NAME = "guardrail-evaluations";
 export const EVALUATE_PROMPT_JOB_NAME = "evaluate-prompt";
@@ -28,6 +29,8 @@ export type EvaluationJobResult = {
   blockReason: string | null;
   toxicityMatches: LocalToxicityMatch[];
   judgeEvaluation: JudgeEvaluation | null;
+  computeTelemetry?: ComputeTelemetry;
+  automatedFlags?: string[];
   metadata?: EvaluationJobData["metadata"];
 };
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getLatestRunIncidents, getLatestRunSummary } from "@/lib/redteamDashboard";
+import { generateRegulatoryAuditReport } from "@/lib/regulatoryMapper";
 import type { IncidentLogRow } from "@/lib/redteamDashboard";
 
 export const dynamic = "force-dynamic";
@@ -77,6 +78,71 @@ function getOwaspRuleMatches(incidents: IncidentLogRow[]) {
   });
 }
 
+function getRegulatoryAuditRequirements(incidents: IncidentLogRow[]) {
+  const requirements = new Map<
+    string,
+    {
+      taxonomy: string;
+      affectedIncidents: number;
+      euAiActClause: string;
+      nistRmfPillar: string;
+      isoControl: string;
+    }
+  >();
+
+  for (const incident of incidents) {
+    const tags = getIncidentTaxonomyTags(incident);
+
+    if (!tags.owaspTag && !tags.mitreTag) {
+      continue;
+    }
+
+    const report = generateRegulatoryAuditReport(tags.owaspTag, tags.mitreTag);
+    const taxonomy = [tags.owaspTag, tags.mitreTag].filter(Boolean).join(" / ");
+    const key = [
+      taxonomy,
+      report.euAiActClause,
+      report.nistRmfPillar,
+      report.isoControl
+    ].join("|");
+    const existingRequirement = requirements.get(key);
+
+    if (existingRequirement) {
+      existingRequirement.affectedIncidents += 1;
+    } else {
+      requirements.set(key, {
+        taxonomy,
+        affectedIncidents: 1,
+        ...report
+      });
+    }
+  }
+
+  return [...requirements.values()].sort((left, right) => {
+    if (right.affectedIncidents !== left.affectedIncidents) {
+      return right.affectedIncidents - left.affectedIncidents;
+    }
+
+    return left.taxonomy.localeCompare(right.taxonomy);
+  });
+}
+
+function getIncidentTaxonomyTags(incident: IncidentLogRow) {
+  const label = incident.complianceVector.label.toUpperCase();
+  const shortLabel = incident.complianceVector.shortLabel.toUpperCase();
+
+  return {
+    owaspTag: shortLabel.includes("OWASP LLM06")
+      ? "OWASP LLM06"
+      : shortLabel.includes("OWASP LLM01")
+        ? "OWASP LLM01"
+        : "",
+    mitreTag: label.includes("AML.T0054") || shortLabel.includes("AML.T0054")
+      ? "MITRE AML.T0054"
+      : ""
+  };
+}
+
 export async function GET() {
   try {
     const [summary, incidentLog] = await Promise.all([
@@ -105,7 +171,8 @@ export async function GET() {
         falsePositiveRate: summary.falsePositiveRate
       },
       confusionMatrix: getConfusionMatrix(incidentLog.incidents),
-      owaspRuleMatches: getOwaspRuleMatches(incidentLog.incidents)
+      owaspRuleMatches: getOwaspRuleMatches(incidentLog.incidents),
+      regulatoryAuditRequirements: getRegulatoryAuditRequirements(incidentLog.incidents)
     });
   } catch (error) {
     console.error("[report-export] Failed to build executive compliance payload.");

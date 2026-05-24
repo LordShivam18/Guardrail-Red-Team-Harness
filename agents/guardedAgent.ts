@@ -1,6 +1,7 @@
 import {
   type Content,
   FinishReason,
+  type GenerationConfig,
   GoogleGenerativeAI,
   HarmBlockThreshold,
   HarmCategory,
@@ -54,6 +55,7 @@ export type GuardedResponseOptions = {
   targetModel?: string;
   imageUrl?: string;
   image_url?: string;
+  generationConfig?: GenerationConfig;
   apiKey?: string;
   judgeApiKey?: string;
   judgeModelName?: string;
@@ -64,6 +66,7 @@ export type GuardedResponseOptions = {
 export type ModelProviderRequest = {
   prompt: string;
   imageUrl?: string;
+  generationConfig?: GenerationConfig;
   modelName: string;
   apiKey: string;
 };
@@ -115,6 +118,7 @@ export async function guardedResponse(
   const modelResult = await provider.generate({
     prompt,
     imageUrl: options.imageUrl ?? options.image_url,
+    generationConfig: options.generationConfig,
     modelName,
     apiKey
   });
@@ -257,7 +261,7 @@ const geminiProvider: ModelProvider = {
   id: "gemini",
   displayName: "Google Gemini",
   apiKeyEnvName: "GEMINI_API_KEY",
-  async generate({ prompt, imageUrl, modelName, apiKey }) {
+  async generate({ prompt, imageUrl, generationConfig, modelName, apiKey }) {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: modelName,
@@ -268,6 +272,7 @@ const geminiProvider: ModelProvider = {
     const result = await withGeminiRetry(() =>
       model.generateContent({
         contents,
+        generationConfig,
         safetySettings: [
           {
             category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
