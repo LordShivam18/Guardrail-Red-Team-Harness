@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { loadLocalEnv } from "./env";
+import { calculateSafetyVolatility } from "../lib/statisticalAnalysis";
 import type { GuardedResponse } from "../agents/guardedAgent";
+import type { SafetyVolatilityMetrics } from "../lib/statisticalAnalysis";
 
 const MODEL_VERSION = "Gemini-2.0-Flash-Guarded-v1";
 const NEON_RETRY_DELAYS_MS = [1_000, 3_000, 7_000];
@@ -84,6 +86,18 @@ async function main() {
     add column if not exists certificate_hash text
   `);
   await withNeonRetry(() => sql`
+    alter table redteam_runs
+    add column if not exists safety_mean double precision not null default 0
+  `);
+  await withNeonRetry(() => sql`
+    alter table redteam_runs
+    add column if not exists safety_variance double precision not null default 0
+  `);
+  await withNeonRetry(() => sql`
+    alter table redteam_runs
+    add column if not exists safety_sharpe double precision not null default 0
+  `);
+  await withNeonRetry(() => sql`
     create unique index if not exists redteam_runs_certificate_hash_idx
       on redteam_runs(certificate_hash)
       where certificate_hash is not null
@@ -121,6 +135,7 @@ async function main() {
   }
 
   const harnessResults: HarnessResult[] = [];
+  const safetyConfidenceScores: number[] = [];
   console.log(`[harness] Starting in-memory evaluation for ${MODEL_VERSION}.`);
 
   for (const [index, prompt] of prompts.entries()) {
@@ -151,6 +166,7 @@ async function main() {
     );
 
     if (response.judgeEvaluation) {
+      safetyConfidenceScores.push(response.judgeEvaluation.confidenceScore);
       console.log(
         `[harness] Judge verdict: isSafe=${response.judgeEvaluation.isSafe} confidence=${response.judgeEvaluation.confidenceScore.toFixed(
           2
@@ -170,9 +186,11 @@ async function main() {
 
   const aggregateMetrics = getAggregateMetrics(harnessResults);
   const certificationMetrics = getCertificationMetrics(harnessResults);
+  const safetyVolatilityMetrics = calculateSafetyVolatility(safetyConfidenceScores);
 
   printAggregateSummary(aggregateMetrics);
   printCertificationSummary(certificationMetrics);
+  printSafetyVolatilitySummary(safetyVolatilityMetrics);
 
   if (isCiWorkflow() && !certificationMetrics.isSystemCertified) {
     printCriticalCertificationFailure(certificationMetrics);
@@ -184,12 +202,18 @@ async function main() {
     insert into redteam_runs (
       model_version,
       jailbreak_rate,
-      fp_rate
+      fp_rate,
+      safety_mean,
+      safety_variance,
+      safety_sharpe
     )
     values (
       ${MODEL_VERSION},
       ${aggregateMetrics.jailbreakRate},
-      ${aggregateMetrics.fpRate}
+      ${aggregateMetrics.fpRate},
+      ${safetyVolatilityMetrics.meanSafetyConfidence},
+      ${safetyVolatilityMetrics.variance},
+      ${safetyVolatilityMetrics.safetySharpeRatio}
     )
     returning id, timestamp
   `)) as RunRow[];
@@ -365,6 +389,16 @@ function printCertificationSummary(metrics: CertificationMetrics) {
     )}% (${metrics.passedBenchmarkAttacks}/${metrics.totalBenchmarkAttacks} benchmark attacks passed)`
   );
   console.log(`[harness] isSystemCertified=${metrics.isSystemCertified}`);
+}
+
+function printSafetyVolatilitySummary(metrics: SafetyVolatilityMetrics) {
+  console.log("[harness] Statistical robustness decay metrics:");
+  console.log(`  samples: ${metrics.sampleSize}`);
+  console.log(`  safety_mean: ${metrics.meanSafetyConfidence.toFixed(4)}`);
+  console.log(`  safety_stddev: ${metrics.standardDeviation.toFixed(4)}`);
+  console.log(`  safety_variance: ${metrics.variance.toFixed(6)}`);
+  console.log(`  safety_sharpe: ${metrics.safetySharpeRatio.toFixed(4)}`);
+  console.log(`  baseline_threshold: ${metrics.baselineThreshold.toFixed(4)}`);
 }
 
 function printCriticalCertificationFailure(metrics: CertificationMetrics) {

@@ -18,6 +18,9 @@ create table redteam_runs (
   model_version text not null,
   jailbreak_rate double precision not null default 0,
   fp_rate double precision not null default 0,
+  safety_mean double precision not null default 0,
+  safety_variance double precision not null default 0,
+  safety_sharpe double precision not null default 0,
   certificate_hash text,
   created_at timestamptz not null default now(),
   constraint redteam_runs_jailbreak_rate_range check (
@@ -25,6 +28,12 @@ create table redteam_runs (
   ),
   constraint redteam_runs_fp_rate_range check (
     fp_rate >= 0 and fp_rate <= 1
+  ),
+  constraint redteam_runs_safety_mean_range check (
+    safety_mean >= 0 and safety_mean <= 1
+  ),
+  constraint redteam_runs_safety_variance_range check (
+    safety_variance >= 0
   )
 );
 

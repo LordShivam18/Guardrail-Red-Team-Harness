@@ -24,6 +24,7 @@ const worker = new Worker<EvaluationJobData, EvaluationJobResult>(
 
     const startedAt = performance.now();
     const response = await guardedResponse(job.data.prompt, {
+      image_url: job.data.image_url,
       forceLive: job.data.forceLive,
       targetModel: job.data.targetModel,
       apiKey: job.data.apiKey,

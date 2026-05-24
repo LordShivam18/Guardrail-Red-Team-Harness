@@ -9,6 +9,7 @@ export const EVALUATE_PROMPT_JOB_NAME = "evaluate-prompt";
 
 export type EvaluationJobData = {
   prompt: string;
+  image_url?: string;
   targetModel?: string;
   forceLive?: boolean;
   apiKey?: string;

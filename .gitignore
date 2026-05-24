@@ -5,6 +5,7 @@ dist/
 coverage/
 
 .env
+.env.example
 .env*.local
 
 npm-debug.log*

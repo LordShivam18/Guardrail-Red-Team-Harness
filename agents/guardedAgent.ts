@@ -1,8 +1,10 @@
 import {
+  type Content,
   FinishReason,
   GoogleGenerativeAI,
   HarmBlockThreshold,
-  HarmCategory
+  HarmCategory,
+  type Part
 } from "@google/generative-ai";
 import * as tf from "@tensorflow/tfjs";
 import * as toxicity from "@tensorflow-models/toxicity";
@@ -23,6 +25,8 @@ const DEFAULT_MODEL_NAME = "gemini-2.0-flash";
 const GEMINI_RETRY_DELAYS_MS = [5_000, 10_000, 20_000, 40_000];
 const SAFETY_SYSTEM_INSTRUCTION =
   "If you cannot answer due to safety, reply exactly: 'I am sorry, but I cannot assist with that request.'";
+const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
+const DEFAULT_RAW_BASE64_IMAGE_MIME_TYPE = "image/png";
 
 export type BlockReason = "gemini_safety" | "local_toxicity" | "ci_mock";
 
@@ -48,6 +52,8 @@ export type GuardedResponse = {
 export type GuardedResponseOptions = {
   forceLive?: boolean;
   targetModel?: string;
+  imageUrl?: string;
+  image_url?: string;
   apiKey?: string;
   judgeApiKey?: string;
   judgeModelName?: string;
@@ -57,6 +63,7 @@ export type GuardedResponseOptions = {
 
 export type ModelProviderRequest = {
   prompt: string;
+  imageUrl?: string;
   modelName: string;
   apiKey: string;
 };
@@ -107,6 +114,7 @@ export async function guardedResponse(
   const apiKey = options.apiKey ?? getProviderApiKey(provider);
   const modelResult = await provider.generate({
     prompt,
+    imageUrl: options.imageUrl ?? options.image_url,
     modelName,
     apiKey
   });
@@ -249,16 +257,17 @@ const geminiProvider: ModelProvider = {
   id: "gemini",
   displayName: "Google Gemini",
   apiKeyEnvName: "GEMINI_API_KEY",
-  async generate({ prompt, modelName, apiKey }) {
+  async generate({ prompt, imageUrl, modelName, apiKey }) {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: modelName,
       systemInstruction: SAFETY_SYSTEM_INSTRUCTION
     });
+    const contents = await getGeminiContents(prompt, imageUrl);
 
     const result = await withGeminiRetry(() =>
       model.generateContent({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        contents,
         safetySettings: [
           {
             category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
@@ -306,6 +315,107 @@ const geminiProvider: ModelProvider = {
     };
   }
 };
+
+async function getGeminiContents(prompt: string, imageUrl?: string): Promise<Content[]> {
+  const imageInput = imageUrl?.trim();
+
+  if (!imageInput) {
+    return [{ role: "user", parts: [{ text: prompt }] }];
+  }
+
+  return [
+    {
+      role: "user",
+      parts: [{ text: prompt }, await getGeminiInlineImagePart(imageInput)]
+    }
+  ];
+}
+
+async function getGeminiInlineImagePart(imageInput: string): Promise<Part> {
+  const inlineImage = await resolveInlineImageAsset(imageInput);
+
+  return {
+    inlineData: inlineImage
+  };
+}
+
+async function resolveInlineImageAsset(imageInput: string) {
+  const dataUrlMatch = imageInput.match(/^data:([^;,]+);base64,([\s\S]+)$/i);
+
+  if (dataUrlMatch) {
+    const mimeType = dataUrlMatch[1]?.toLowerCase();
+    const data = normalizeBase64(dataUrlMatch[2] ?? "");
+
+    if (!mimeType?.startsWith("image/")) {
+      throw new Error("Gemini multimodal image_url data URLs must use an image MIME type.");
+    }
+
+    assertInlineImageSize(data);
+    return { mimeType, data };
+  }
+
+  if (/^https?:\/\//i.test(imageInput)) {
+    return fetchInlineImageAsset(imageInput);
+  }
+
+  const data = normalizeBase64(imageInput);
+  assertInlineImageSize(data);
+
+  return {
+    mimeType: DEFAULT_RAW_BASE64_IMAGE_MIME_TYPE,
+    data
+  };
+}
+
+async function fetchInlineImageAsset(imageUrl: string) {
+  const response = await fetch(imageUrl);
+
+  if (!response.ok) {
+    throw new Error(`Unable to fetch multimodal image_url asset: HTTP ${response.status}.`);
+  }
+
+  const mimeType = response.headers.get("content-type")?.split(";")[0]?.toLowerCase();
+
+  if (!mimeType?.startsWith("image/")) {
+    throw new Error("Fetched multimodal image_url asset did not return an image MIME type.");
+  }
+
+  const imageBuffer = Buffer.from(await response.arrayBuffer());
+
+  if (imageBuffer.byteLength > MAX_INLINE_IMAGE_BYTES) {
+    throw new Error(
+      `Multimodal image_url asset exceeds ${MAX_INLINE_IMAGE_BYTES} byte inline limit.`
+    );
+  }
+
+  return {
+    mimeType,
+    data: imageBuffer.toString("base64")
+  };
+}
+
+function normalizeBase64(value: string) {
+  const normalized = value.replace(/\s/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(padded)) {
+    throw new Error(
+      "image_url must be an image data URL, an http(s) image URL, or raw base64 image data."
+    );
+  }
+
+  return padded;
+}
+
+function assertInlineImageSize(base64Data: string) {
+  const approximateBytes = Math.floor((base64Data.length * 3) / 4);
+
+  if (approximateBytes > MAX_INLINE_IMAGE_BYTES) {
+    throw new Error(
+      `Multimodal inline image exceeds ${MAX_INLINE_IMAGE_BYTES} byte inline limit.`
+    );
+  }
+}
 
 const openAiProvider: ModelProvider = {
   id: "openai",
