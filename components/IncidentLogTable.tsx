@@ -52,15 +52,15 @@ function formatTimestamp(value: string) {
 function outcomeClasses(outcomeFlag: IncidentLogRow["outcomeFlag"]) {
   switch (outcomeFlag) {
     case "PASSED":
-      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+      return "border-neutral-700 bg-neutral-900 text-white";
     case "FAILED":
-      return "border-rose-500/40 bg-rose-500/15 text-rose-100";
+      return "border-red-900/60 bg-red-950/30 text-red-400";
     case "FP":
-      return "border-amber-400/40 bg-amber-400/15 text-amber-100";
+      return "border-amber-900/50 bg-amber-950/20 text-amber-400";
     case "FN":
-      return "border-orange-400/40 bg-orange-400/15 text-orange-100";
+      return "border-red-900/40 bg-red-950/20 text-red-300";
     default:
-      return "border-slate-500/30 bg-slate-500/10 text-slate-200";
+      return "border-neutral-700 bg-neutral-900 text-neutral-300";
   }
 }
 
@@ -161,32 +161,32 @@ function getRuleFlags(incident: IncidentLogRow): RuleFlag[] {
 function metadataToneClasses(tone: MetadataCard["tone"]) {
   switch (tone) {
     case "danger":
-      return "border-rose-400/30 bg-rose-500/10 text-rose-100";
+      return "border-red-900/60 bg-red-950/30 text-red-400";
     case "safe":
-      return "border-emerald-400/30 bg-emerald-400/10 text-emerald-100";
+      return "border-neutral-700 bg-neutral-900 text-white";
     case "warning":
-      return "border-amber-300/30 bg-amber-300/10 text-amber-100";
+      return "border-amber-900/50 bg-amber-950/20 text-amber-400";
     case "info":
-      return "border-cyan-300/30 bg-cyan-400/10 text-cyan-100";
+      return "border-neutral-700 bg-neutral-900 text-neutral-300";
     case "mitre":
-      return "border-violet-300/30 bg-violet-400/10 text-violet-100";
+      return "border-neutral-700 bg-neutral-900 text-neutral-300";
     default:
-      return "border-slate-700/80 bg-slate-900/55 text-slate-100";
+      return "border-neutral-800 bg-neutral-950 text-neutral-300";
   }
 }
 
 function complianceToneClasses(tone: IncidentLogRow["complianceVector"]["tone"]) {
   switch (tone) {
     case "amber":
-      return "border-amber-300/40 bg-amber-300/15 text-amber-100 shadow-[0_0_18px_rgba(252,211,77,0.12)]";
+      return "border-amber-900/50 bg-amber-950/20 text-amber-400";
     case "rose":
-      return "border-rose-300/35 bg-rose-500/15 text-rose-100 shadow-[0_0_18px_rgba(251,113,133,0.12)]";
+      return "border-red-900/60 bg-red-950/30 text-red-400";
     case "violet":
-      return "border-violet-300/35 bg-violet-400/15 text-violet-100 shadow-[0_0_18px_rgba(167,139,250,0.12)]";
+      return "border-neutral-700 bg-neutral-900 text-neutral-300";
     case "cyan":
-      return "border-cyan-300/35 bg-cyan-400/10 text-cyan-100 shadow-[0_0_18px_rgba(103,232,249,0.12)]";
+      return "border-neutral-700 bg-neutral-900 text-neutral-300";
     default:
-      return "border-slate-600 bg-slate-800/70 text-slate-200";
+      return "border-neutral-800 bg-neutral-950 text-neutral-400";
   }
 }
 
@@ -210,13 +210,13 @@ function complianceMetadataTone(
 function ruleFlagClasses(tone: RuleFlag["tone"]) {
   switch (tone) {
     case "danger":
-      return "border-rose-400/35 bg-rose-500/10 text-rose-100";
+      return "border-red-900/60 bg-red-950/30 text-red-400";
     case "safe":
-      return "border-emerald-400/35 bg-emerald-400/10 text-emerald-100";
+      return "border-neutral-700 bg-neutral-900 text-white";
     case "warning":
-      return "border-amber-300/35 bg-amber-300/10 text-amber-100";
+      return "border-amber-900/50 bg-amber-950/20 text-amber-400";
     default:
-      return "border-cyan-300/25 bg-cyan-400/10 text-cyan-100";
+      return "border-neutral-700 bg-neutral-900 text-neutral-300";
   }
 }
 
@@ -232,25 +232,25 @@ function DiffPane({ label, sourceName, text, tone, blocked = false }: DiffPanePr
   const toneClasses =
     tone === "danger"
       ? rawBlocked
-        ? "border-rose-400/35 bg-rose-950/40 text-rose-50 shadow-[inset_0_0_48px_rgba(244,63,94,0.12)]"
-        : "border-rose-500/20 bg-rose-950/15 text-rose-100"
-      : "border-emerald-400/25 bg-emerald-950/20 text-emerald-50 shadow-[0_0_24px_rgba(52,211,153,0.08)]";
-  const markerClasses = tone === "danger" ? "text-rose-300" : "text-emerald-200";
+        ? "border-red-900/60 bg-red-950/30 text-red-300"
+        : "border-red-900/40 bg-red-950/20 text-red-200"
+      : "border-neutral-700 bg-neutral-900 text-neutral-200";
+  const markerClasses = tone === "danger" ? "text-red-500" : "text-white";
   const gutterClasses =
     tone === "danger"
-      ? "border-rose-300/10 bg-rose-950/30 text-rose-300/70"
-      : "border-emerald-300/10 bg-emerald-950/20 text-emerald-300/70";
+      ? "border-red-900/30 bg-red-950/20 text-red-400/70"
+      : "border-neutral-800 bg-neutral-950 text-neutral-500";
 
   return (
     <section className={`min-h-80 overflow-hidden rounded-lg border ${toneClasses}`}>
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+      <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-3">
         <div>
-          <p className="font-mono text-[11px] text-slate-500">{sourceName}</p>
-          <h3 className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-200">
+          <p className="font-mono text-[11px] text-neutral-600">{sourceName}</p>
+          <h3 className="mt-1 font-mono text-xs font-medium uppercase tracking-[0.16em] text-neutral-300">
             {label}
           </h3>
         </div>
-        <span className="rounded border border-white/10 bg-slate-950/60 px-2 py-1 font-mono text-[11px] text-slate-400">
+        <span className="rounded-none border border-neutral-700 bg-black px-2 py-1 font-mono text-[11px] text-neutral-500">
           {tone === "danger" ? "raw" : "safe"}
         </span>
       </div>
@@ -337,30 +337,30 @@ function AttemptDetailDrawer({
     <div className="fixed inset-0 z-50">
       <button
         aria-label="Close attempt details"
-        className="attempt-drawer-overlay-in absolute inset-0 cursor-default bg-slate-950/75 backdrop-blur-sm"
+        className="attempt-drawer-overlay-in absolute inset-0 cursor-default bg-black/80"
         onClick={onClose}
         type="button"
       />
       <aside
         aria-label="Attempt evaluation inspector"
         aria-modal="true"
-        className="attempt-drawer-panel-in absolute right-0 top-0 flex h-full w-full max-w-6xl flex-col border-l border-white/10 bg-slate-950/95 shadow-2xl shadow-black/60 backdrop-blur-xl"
+        className="attempt-drawer-panel-in absolute right-0 top-0 flex h-full w-full max-w-6xl flex-col border-l border-neutral-800 bg-black"
         role="dialog"
       >
-        <div className="flex flex-col gap-4 border-b border-white/10 bg-white/[0.03] px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-4 border-b border-neutral-800 bg-neutral-950 px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">
+            <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-neutral-500">
               Attempt Inspector
             </p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-50">
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
               {getEvaluationCategory(incident)}
             </h2>
-            <p className="mt-2 text-sm text-slate-500">
-              Result {incident.id.slice(0, 8)} - {formatTimestamp(incident.createdAt)}
+            <p className="mt-2 font-mono text-sm text-neutral-500">
+              Result {incident.id.slice(0, 8)} — {formatTimestamp(incident.createdAt)}
             </p>
           </div>
           <button
-            className="h-10 rounded-md border border-slate-700 bg-slate-950/80 px-4 text-sm font-semibold text-slate-200 transition hover:border-emerald-300/60 hover:text-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
+            className="h-10 rounded-md border border-neutral-700 bg-neutral-900 px-4 font-mono text-sm font-semibold uppercase text-neutral-300 transition hover:border-neutral-500 hover:text-white focus:outline-none focus:ring-1 focus:ring-neutral-500"
             onClick={onClose}
             type="button"
           >
@@ -372,13 +372,13 @@ function AttemptDetailDrawer({
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {metadata.map((item) => (
               <section
-                className={`rounded-lg border p-4 ${metadataToneClasses(item.tone)}`}
+                className={`rounded-md border p-4 ${metadataToneClasses(item.tone)}`}
                 key={item.label}
               >
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                <p className="font-mono text-xs font-medium uppercase tracking-[0.14em] text-neutral-500">
                   {item.label}
                 </p>
-                <p className="mt-2 break-words text-sm font-semibold text-slate-100">
+                <p className="mt-2 break-words text-sm font-semibold text-white">
                   {item.value}
                 </p>
               </section>
@@ -387,37 +387,37 @@ function AttemptDetailDrawer({
 
           <div className="mt-5 flex flex-wrap gap-2">
             <span
-              className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${outcomeClasses(
+              className={`inline-flex rounded-none border px-2.5 py-1 font-mono text-xs font-semibold uppercase ${outcomeClasses(
                 incident.outcomeFlag
               )}`}
             >
               {outcomeLabel(incident.outcomeFlag)}
             </span>
-            <span className="inline-flex rounded-full border border-cyan-400/25 bg-cyan-400/10 px-2.5 py-1 text-xs font-semibold text-cyan-100">
+            <span className="inline-flex rounded-none border border-neutral-700 bg-neutral-900 px-2.5 py-1 font-mono text-xs font-semibold uppercase text-neutral-300">
               {incident.safetyVector}
             </span>
           </div>
 
-          <section className="mt-5 rounded-lg border border-white/10 bg-slate-900/35 p-4">
+          <section className="mt-5 rounded-md border border-neutral-800 bg-neutral-950 p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                <p className="font-mono text-xs font-medium uppercase tracking-[0.16em] text-neutral-500">
                   Multi-Layer Rule Flags
                 </p>
-                <h3 className="mt-2 text-lg font-semibold text-slate-100">
+                <h3 className="mt-2 text-lg font-black tracking-tight text-white">
                   Evaluation Signal Stack
                 </h3>
               </div>
-              <p className="text-sm text-slate-500">{ruleFlags.length} active signals</p>
+              <p className="font-mono text-sm text-neutral-500">{ruleFlags.length} active signals</p>
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {ruleFlags.map((flag) => (
                 <article
-                  className={`rounded-lg border p-3 ${ruleFlagClasses(flag.tone)}`}
+                  className={`rounded-md border p-3 ${ruleFlagClasses(flag.tone)}`}
                   key={`${flag.label}-${flag.value}`}
                 >
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  <p className="font-mono text-xs font-medium uppercase tracking-[0.12em] text-neutral-500">
                     {flag.label}
                   </p>
                   <p className="mt-2 text-sm leading-5">{flag.value}</p>
@@ -442,11 +442,11 @@ function AttemptDetailDrawer({
             />
           </div>
 
-          <section className="mt-5 rounded-lg border border-slate-800 bg-slate-900/40 p-4">
-            <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+          <section className="mt-5 rounded-md border border-neutral-800 bg-black p-4">
+            <h3 className="font-mono text-xs font-medium uppercase tracking-[0.16em] text-neutral-500">
               Raw Model Trace
             </h3>
-            <p className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-6 text-slate-300">
+            <p className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-6 text-neutral-400">
               {incident.rawOutput}
             </p>
           </section>
@@ -486,15 +486,15 @@ export function IncidentLogTable({ incidents }: IncidentLogTableProps) {
 
   return (
     <div className="mt-5">
-      <div className="flex flex-col gap-3 border-y border-slate-800 bg-slate-950/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-slate-400">
+      <div className="flex flex-col gap-3 border-y border-neutral-800 bg-black px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="font-mono text-sm text-neutral-500">
           Showing{" "}
-          <span className="font-semibold text-slate-100">{visibleIncidents.length}</span>{" "}
-          of <span className="font-semibold text-slate-100">{incidents.length}</span>{" "}
+          <span className="font-semibold text-white">{visibleIncidents.length}</span>{" "}
+          of <span className="font-semibold text-white">{incidents.length}</span>{" "}
           attempts
         </p>
 
-        <label className="inline-flex w-fit cursor-pointer items-center gap-3 text-sm font-medium text-slate-200">
+        <label className="inline-flex w-fit cursor-pointer items-center gap-3 font-mono text-sm font-medium text-neutral-300">
           <span>Show Failures Only</span>
           <span className="relative inline-flex h-6 w-11 items-center">
             <input
@@ -503,16 +503,16 @@ export function IncidentLogTable({ incidents }: IncidentLogTableProps) {
               onChange={(event) => setShowFailuresOnly(event.target.checked)}
               type="checkbox"
             />
-            <span className="absolute inset-0 rounded-full border border-slate-700 bg-slate-900 transition peer-checked:border-rose-400/60 peer-checked:bg-rose-500/20" />
-            <span className="absolute left-1 h-4 w-4 rounded-full bg-slate-500 transition peer-checked:translate-x-5 peer-checked:bg-rose-300" />
+            <span className="absolute inset-0 rounded-full border border-neutral-700 bg-neutral-900 transition peer-checked:border-red-800 peer-checked:bg-red-950/40" />
+            <span className="absolute left-1 h-4 w-4 rounded-full bg-neutral-600 transition peer-checked:translate-x-5 peer-checked:bg-red-500" />
           </span>
         </label>
       </div>
 
       <div className="overflow-x-auto">
         <table className="min-w-full table-fixed border-collapse">
-          <thead className="bg-slate-900/80">
-            <tr className="border-b border-slate-800 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+          <thead className="bg-neutral-950">
+            <tr className="border-b border-neutral-800 text-left font-mono text-xs font-medium uppercase tracking-[0.16em] text-neutral-500">
               <th className="w-64 px-4 py-3">Category</th>
               <th className="w-80 px-4 py-3">Prompt</th>
               <th className="w-48 px-4 py-3">Outcome</th>
@@ -520,10 +520,10 @@ export function IncidentLogTable({ incidents }: IncidentLogTableProps) {
               <th className="px-4 py-3">Final Output</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800">
+          <tbody className="divide-y divide-neutral-800">
             {visibleIncidents.length === 0 ? (
               <tr>
-                <td className="px-4 py-8 text-center text-sm text-slate-500" colSpan={5}>
+                <td className="px-4 py-8 text-center font-mono text-sm text-neutral-600" colSpan={5}>
                   No incidents match the current filter.
                 </td>
               </tr>
@@ -534,8 +534,8 @@ export function IncidentLogTable({ incidents }: IncidentLogTableProps) {
                   aria-selected={selectedAttemptId === incident.id}
                   className={`cursor-pointer align-top transition focus:outline-none ${
                     selectedAttemptId === incident.id
-                      ? "bg-emerald-400/10 shadow-[inset_3px_0_0_rgba(52,211,153,0.9)]"
-                      : "bg-slate-950/40 hover:bg-slate-900/70 focus:bg-slate-900/70"
+                      ? "bg-neutral-900 border-l-2 border-l-white"
+                      : "bg-black hover:bg-neutral-950 focus:bg-neutral-950"
                   }`}
                   key={incident.id}
                   onClick={() => toggleIncident(incident.id)}
@@ -544,24 +544,24 @@ export function IncidentLogTable({ incidents }: IncidentLogTableProps) {
                 >
                   <td className="px-4 py-4">
                     <span
-                      className={`inline-flex max-w-full flex-col rounded-lg border px-2.5 py-2 text-xs font-semibold ${complianceToneClasses(
+                      className={`inline-flex max-w-full flex-col rounded-none border px-2.5 py-2 font-mono text-xs font-semibold ${complianceToneClasses(
                         incident.complianceVector.tone
                       )}`}
                     >
-                      <span className="text-[11px] uppercase text-slate-400">
+                      <span className="text-[11px] uppercase text-neutral-500">
                         {incident.complianceVector.framework}
                       </span>
                       <span className="mt-1 leading-5">{incident.complianceVector.label}</span>
                     </span>
                   </td>
                   <td className="px-4 py-4">
-                    <p className="truncate text-sm text-slate-300" title={incident.prompt}>
+                    <p className="truncate text-sm text-neutral-400" title={incident.prompt}>
                       {incident.prompt}
                     </p>
                   </td>
                   <td className="px-4 py-4">
                     <span
-                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${outcomeClasses(
+                      className={`inline-flex rounded-none border px-2.5 py-1 font-mono text-xs font-semibold uppercase ${outcomeClasses(
                         incident.outcomeFlag
                       )}`}
                     >
@@ -569,12 +569,12 @@ export function IncidentLogTable({ incidents }: IncidentLogTableProps) {
                     </span>
                   </td>
                   <td className="px-4 py-4">
-                    <span className="inline-flex max-w-full rounded-full border border-cyan-400/25 bg-cyan-400/10 px-2.5 py-1 text-xs font-semibold text-cyan-100">
+                    <span className="inline-flex max-w-full rounded-none border border-neutral-700 bg-neutral-900 px-2.5 py-1 font-mono text-xs font-semibold uppercase text-neutral-300">
                       <span className="truncate">{incident.safetyVector}</span>
                     </span>
                   </td>
                   <td className="px-4 py-4">
-                    <p className="max-h-24 overflow-hidden text-sm leading-6 text-slate-300">
+                    <p className="max-h-24 overflow-hidden text-sm leading-6 text-neutral-400">
                       {incident.finalOutput}
                     </p>
                   </td>

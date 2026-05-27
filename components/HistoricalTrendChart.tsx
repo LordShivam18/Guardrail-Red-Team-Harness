@@ -71,25 +71,25 @@ function TrendTooltip({ active, payload }: TrendTooltipProps) {
   }
 
   return (
-    <div className="min-w-56 rounded-lg border border-white/10 bg-slate-950/95 p-4 shadow-2xl shadow-black/50 backdrop-blur-xl">
-      <p className="text-xs font-semibold uppercase text-slate-400">
+    <div className="min-w-56 rounded-md border border-neutral-700 bg-neutral-950 p-4">
+      <p className="font-mono text-xs font-medium uppercase text-neutral-500">
         {formatTooltipTime(point.timestamp)}
       </p>
       <div className="mt-3 grid gap-2">
         <div className="flex items-center justify-between gap-5 text-sm">
-          <span className="text-rose-200">Jailbreak Rate</span>
-          <span className="font-semibold text-rose-100">
+          <span className="text-neutral-400">Jailbreak Rate</span>
+          <span className="font-black text-red-500">
             {formatPercent(point.jailbreakRate)}
           </span>
         </div>
         <div className="flex items-center justify-between gap-5 text-sm">
-          <span className="text-emerald-200">False Positive Rate</span>
-          <span className="font-semibold text-emerald-100">
+          <span className="text-neutral-400">False Positive Rate</span>
+          <span className="font-black text-white">
             {formatPercent(point.fpRate)}
           </span>
         </div>
       </div>
-      <p className="mt-3 text-xs text-slate-500">Run {point.runId.slice(0, 8)}</p>
+      <p className="mt-3 font-mono text-xs text-neutral-600">Run {point.runId.slice(0, 8)}</p>
     </div>
   );
 }
@@ -138,16 +138,16 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
 
   if (runs.length === 0) {
     return (
-      <section className="overflow-hidden rounded-lg border border-white/10 bg-slate-950/70 p-6 shadow-xl shadow-black/30 backdrop-blur-xl">
+      <section className="overflow-hidden rounded-md border border-neutral-800 bg-neutral-950 p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">
+            <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-neutral-500">
               Historical Trends
             </p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-50">Run Timeline</h2>
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-white">Run Timeline</h2>
           </div>
         </div>
-        <div className="mt-5 rounded-lg border border-slate-800 bg-slate-900/40 p-6 text-sm text-slate-400">
+        <div className="mt-5 rounded-md border border-neutral-800 bg-black p-6 text-sm text-neutral-500">
           No historical red-team runs have been recorded yet.
         </div>
       </section>
@@ -155,26 +155,26 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
   }
 
   return (
-    <section className="overflow-hidden rounded-lg border border-white/10 bg-slate-950/70 shadow-2xl shadow-black/30 backdrop-blur-xl">
+    <section className="overflow-hidden rounded-md border border-neutral-800 bg-neutral-950">
       <div className="flex flex-col gap-4 px-5 py-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">
+          <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-neutral-500">
             Historical Trends
           </p>
-          <h2 className="mt-2 text-2xl font-semibold text-slate-50">Run Timeline</h2>
+          <h2 className="mt-2 text-2xl font-black tracking-tight text-white">Run Timeline</h2>
         </div>
 
         <div className="grid gap-2 text-sm sm:grid-cols-2 lg:text-right">
-          <p className="font-semibold text-rose-200">
+          <p className="font-mono font-bold text-red-500">
             Jailbreak peak {formatPercent(peaks.jailbreak)}
           </p>
-          <p className="font-semibold text-emerald-200">
+          <p className="font-mono font-bold text-white">
             FP peak {formatPercent(peaks.fp)}
           </p>
         </div>
       </div>
 
-      <div className="w-full h-[400px] min-h-[400px] border-t border-white/10 bg-[radial-gradient(circle_at_22%_16%,rgba(244,63,94,0.16),transparent_34%),radial-gradient(circle_at_82%_20%,rgba(16,185,129,0.12),transparent_28%),rgba(2,6,23,0.72)] px-2 py-4 sm:px-4">
+      <div className="w-full h-[400px] min-h-[400px] border-t border-neutral-800 bg-black px-2 py-4 sm:px-4">
         <ResponsiveContainer height="100%" width="100%">
           <AreaChart
             data={chartData}
@@ -187,22 +187,22 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
           >
             <defs>
               <linearGradient id="jailbreakGradient" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="#fb7185" stopOpacity={0.52} />
-                <stop offset="56%" stopColor="#e11d48" stopOpacity={0.18} />
-                <stop offset="100%" stopColor="#7f1d1d" stopOpacity={0.02} />
+                <stop offset="0%" stopColor="#ef4444" stopOpacity={0.4} />
+                <stop offset="56%" stopColor="#ef4444" stopOpacity={0.12} />
+                <stop offset="100%" stopColor="#ef4444" stopOpacity={0.01} />
               </linearGradient>
               <linearGradient id="fpGradient" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="#34d399" stopOpacity={0.42} />
-                <stop offset="62%" stopColor="#10b981" stopOpacity={0.14} />
-                <stop offset="100%" stopColor="#064e3b" stopOpacity={0.02} />
+                <stop offset="0%" stopColor="#ffffff" stopOpacity={0.3} />
+                <stop offset="62%" stopColor="#ffffff" stopOpacity={0.08} />
+                <stop offset="100%" stopColor="#ffffff" stopOpacity={0.01} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="rgba(148, 163, 184, 0.14)" strokeDasharray="4 8" />
+            <CartesianGrid stroke="rgba(64, 64, 64, 0.5)" strokeDasharray="4 8" />
             <XAxis
               dataKey="timestampMs"
               domain={domains.x}
               minTickGap={28}
-              stroke="#64748b"
+              stroke="#525252"
               tickFormatter={formatAxisTime}
               tickLine={false}
               type="number"
@@ -211,7 +211,7 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
               axisLine={false}
               domain={[0, domains.jailbreakMax]}
               orientation="left"
-              stroke="#fb7185"
+              stroke="#ef4444"
               tickFormatter={formatPercent}
               tickLine={false}
               width={44}
@@ -221,7 +221,7 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
               axisLine={false}
               domain={[0, domains.fpMax]}
               orientation="right"
-              stroke="#34d399"
+              stroke="#a3a3a3"
               tickFormatter={formatPercent}
               tickLine={false}
               width={44}
@@ -229,50 +229,47 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
             />
             <Tooltip
               content={<TrendTooltip />}
-              cursor={{ stroke: "#e2e8f0", strokeOpacity: 0.28 }}
+              cursor={{ stroke: "#525252", strokeOpacity: 0.5 }}
             />
             <Area
               activeDot={{
                 r: 6,
-                fill: "#fb7185",
-                stroke: "#fff1f2",
+                fill: "#ef4444",
+                stroke: "#000000",
                 strokeWidth: 2
               }}
               dataKey="jailbreakRate"
               dot={{
                 r: 3,
-                fill: "#020617",
-                stroke: "#fb7185",
+                fill: "#000000",
+                stroke: "#ef4444",
                 strokeWidth: 2
               }}
               fill="url(#jailbreakGradient)"
               name="Jailbreak Rate"
-              stroke="#fb7185"
-              strokeWidth={3}
+              stroke="#ef4444"
+              strokeWidth={2}
               type="monotone"
               yAxisId="jailbreak"
             />
             <Area
               activeDot={{
                 r: 6,
-                fill: "#34d399",
-                stroke: "#ecfdf5",
+                fill: "#ffffff",
+                stroke: "#000000",
                 strokeWidth: 2
               }}
               dataKey="fpRate"
               dot={{
                 r: 3,
-                fill: "#020617",
-                stroke: "#34d399",
+                fill: "#000000",
+                stroke: "#ffffff",
                 strokeWidth: 2
               }}
               fill="url(#fpGradient)"
               name="False Positive Rate"
-              stroke="#34d399"
-              strokeWidth={3}
-              style={{
-                filter: "drop-shadow(0 0 12px rgba(52, 211, 153, 0.42))"
-              }}
+              stroke="#ffffff"
+              strokeWidth={2}
               type="monotone"
               yAxisId="fp"
             />

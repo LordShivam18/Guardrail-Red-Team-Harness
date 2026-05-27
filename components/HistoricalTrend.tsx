@@ -8,9 +8,9 @@ export async function HistoricalTrend() {
     return <HistoricalTrendChart runs={runs} />;
   } catch (error) {
     return (
-      <section className="rounded-lg border border-rose-900/80 bg-rose-950/30 p-6">
-        <h2 className="text-lg font-semibold text-rose-100">Timeline unavailable</h2>
-        <p className="mt-2 text-sm text-rose-200">
+      <section className="rounded-md border border-red-900/60 bg-neutral-950 p-6">
+        <h2 className="text-lg font-black tracking-tight text-white">Timeline unavailable</h2>
+        <p className="mt-2 text-sm text-neutral-400">
           {error instanceof Error ? error.message : "The database returned an unknown error."}
         </p>
       </section>

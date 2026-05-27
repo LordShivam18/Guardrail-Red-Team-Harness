@@ -17,9 +17,9 @@ export async function IncidentLog() {
 
     if (!data) {
       return (
-        <section className="rounded-lg border border-slate-800 bg-slate-950/70 p-6">
-          <h2 className="text-lg font-semibold text-slate-100">Incident Log</h2>
-          <p className="mt-2 text-sm text-slate-400">
+        <section className="rounded-md border border-neutral-800 bg-neutral-950 p-6">
+          <h2 className="text-lg font-black tracking-tight text-white">Incident Log</h2>
+          <p className="mt-2 text-sm text-neutral-500">
             No incident records are available yet.
           </p>
         </section>
@@ -27,18 +27,18 @@ export async function IncidentLog() {
     }
 
     return (
-      <section className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950/70 shadow-xl shadow-black/20">
+      <section className="overflow-hidden rounded-md border border-neutral-800 bg-neutral-950">
         <div className="flex flex-col gap-2 px-5 py-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
+            <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-neutral-500">
               Incident Log
             </p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-50">
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
               Table of Attempts
             </h2>
           </div>
-          <p className="text-sm text-slate-500">
-            Run {data.runId.slice(0, 8)} - {formatTimestamp(data.timestamp)}
+          <p className="font-mono text-sm text-neutral-500">
+            Run {data.runId.slice(0, 8)} — {formatTimestamp(data.timestamp)}
           </p>
         </div>
 
@@ -49,9 +49,9 @@ export async function IncidentLog() {
     );
   } catch (error) {
     return (
-      <section className="rounded-lg border border-rose-900/80 bg-rose-950/30 p-6">
-        <h2 className="text-lg font-semibold text-rose-100">Incident log unavailable</h2>
-        <p className="mt-2 text-sm text-rose-200">
+      <section className="rounded-md border border-red-900/60 bg-neutral-950 p-6">
+        <h2 className="text-lg font-black tracking-tight text-white">Incident log unavailable</h2>
+        <p className="mt-2 text-sm text-neutral-400">
           {error instanceof Error ? error.message : "The database returned an unknown error."}
         </p>
       </section>

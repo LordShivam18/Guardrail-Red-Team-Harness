@@ -10,7 +10,7 @@ export function RefreshButton() {
   return (
     <button
       aria-busy={isPending}
-      className="inline-flex h-10 items-center justify-center rounded-md border border-cyan-400/40 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300 hover:bg-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-300/50 disabled:cursor-not-allowed disabled:opacity-70"
+      className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-700 bg-neutral-900 px-4 font-mono text-sm font-semibold uppercase text-neutral-300 transition hover:border-neutral-500 hover:text-white focus:outline-none focus:ring-1 focus:ring-neutral-500 disabled:cursor-not-allowed disabled:opacity-50"
       disabled={isPending}
       onClick={() => startTransition(() => router.refresh())}
       type="button"

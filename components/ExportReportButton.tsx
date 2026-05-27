@@ -341,15 +341,15 @@ export function ExportReportButton() {
     <div className="flex flex-col items-start gap-2 sm:items-end">
       <button
         aria-busy={isExporting}
-        className="inline-flex h-10 items-center justify-center rounded-md border border-emerald-300/40 bg-emerald-400/10 px-4 text-sm font-semibold text-emerald-100 transition hover:border-emerald-200/70 hover:bg-emerald-400/20 focus:outline-none focus:ring-2 focus:ring-emerald-300/45 disabled:cursor-not-allowed disabled:opacity-70"
+        className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-700 bg-neutral-900 px-4 font-mono text-sm font-semibold uppercase text-neutral-300 transition hover:border-neutral-500 hover:text-white focus:outline-none focus:ring-1 focus:ring-neutral-500 disabled:cursor-not-allowed disabled:opacity-50"
         disabled={isExporting}
         onClick={handleExport}
         type="button"
       >
-        {isExporting ? "Preparing PDF..." : "Export Executive Compliance PDF"}
+        {isExporting ? "Preparing PDF..." : "Export Compliance PDF"}
       </button>
       {errorMessage ? (
-        <p className="max-w-xs text-xs leading-5 text-rose-200">{errorMessage}</p>
+        <p className="max-w-xs font-mono text-xs leading-5 text-red-500">{errorMessage}</p>
       ) : null}
     </div>
   );

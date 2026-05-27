@@ -52,20 +52,20 @@ function LatencyTooltip({ active, payload }: LatencyTooltipProps) {
   }
 
   return (
-    <div className="min-w-64 rounded-lg border border-white/10 bg-slate-950/95 p-4 shadow-2xl shadow-black/50 backdrop-blur-xl">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+    <div className="min-w-64 rounded-md border border-neutral-700 bg-black p-4">
+      <p className="font-mono text-xs font-medium uppercase tracking-[0.14em] text-neutral-500">
         {point.modelName}
       </p>
       <div className="mt-3 grid gap-2 text-sm">
         <div className="flex items-center justify-between gap-5">
-          <span className="text-cyan-100">Average Latency</span>
-          <span className="font-semibold text-slate-50">
+          <span className="text-neutral-400">Average Latency</span>
+          <span className="font-black text-white">
             {point.latencyTracked ? formatLatency(point.averageLatencyMs) : "Not tracked"}
           </span>
         </div>
         <div className="flex items-center justify-between gap-5">
-          <span className="text-emerald-100">Defusal Rate</span>
-          <span className="font-semibold text-emerald-100">
+          <span className="text-neutral-400">Defusal Rate</span>
+          <span className="font-black text-white">
             {point.defusalSuccessRate.toFixed(2)}%
           </span>
         </div>
@@ -89,14 +89,14 @@ export function ModelLatencyBarChart({ summaries }: ModelLatencyBarChartProps) {
 
   if (chartData.length === 0) {
     return (
-      <div className="grid h-72 place-items-center rounded-lg border border-slate-800 bg-slate-900/45 text-sm text-slate-500">
+      <div className="grid h-72 place-items-center rounded-md border border-neutral-800 bg-black font-mono text-sm text-neutral-600">
         No latency data available.
       </div>
     );
   }
 
   return (
-    <div className="h-[24rem] rounded-lg border border-white/10 bg-slate-950/70 px-2 py-5 sm:px-4">
+    <div className="h-[24rem] rounded-md border border-neutral-800 bg-neutral-950 px-2 py-5 sm:px-4">
       <ResponsiveContainer height="100%" width="100%">
         <BarChart
           data={chartData}
@@ -110,41 +110,40 @@ export function ModelLatencyBarChart({ summaries }: ModelLatencyBarChartProps) {
         >
           <defs>
             <linearGradient id="latencyBarGradient" x1="0" x2="1" y1="0" y2="0">
-              <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.82} />
-              <stop offset="58%" stopColor="#34d399" stopOpacity={0.9} />
-              <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.76} />
+              <stop offset="0%" stopColor="#ffffff" stopOpacity={0.9} />
+              <stop offset="100%" stopColor="#a3a3a3" stopOpacity={0.7} />
             </linearGradient>
           </defs>
           <CartesianGrid
             horizontal={false}
-            stroke="rgba(148, 163, 184, 0.15)"
+            stroke="rgba(64, 64, 64, 0.5)"
             strokeDasharray="4 8"
           />
           <XAxis
             axisLine={false}
             tickFormatter={(value) => formatLatency(Number(value))}
             tickLine={false}
-            stroke="#64748b"
+            stroke="#525252"
             type="number"
           />
           <YAxis
             axisLine={false}
             dataKey="chartLabel"
             tickLine={false}
-            stroke="#cbd5e1"
+            stroke="#a3a3a3"
             type="category"
             width={150}
           />
           <Tooltip
             content={<LatencyTooltip />}
-            cursor={{ fill: "rgba(148, 163, 184, 0.08)" }}
+            cursor={{ fill: "rgba(64, 64, 64, 0.15)" }}
           />
           <Bar
-            background={{ fill: "rgba(15, 23, 42, 0.72)", radius: 8 }}
+            background={{ fill: "rgba(0, 0, 0, 0.7)", radius: 4 }}
             dataKey="averageLatencyMs"
             fill="url(#latencyBarGradient)"
             maxBarSize={28}
-            radius={[0, 8, 8, 0]}
+            radius={[0, 4, 4, 0]}
           />
         </BarChart>
       </ResponsiveContainer>
