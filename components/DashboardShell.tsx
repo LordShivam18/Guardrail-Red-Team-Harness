@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { ExportReportButton } from "@/components/ExportReportButton";
 import { HistoricalTrend } from "@/components/HistoricalTrend";
 import { IncidentLog } from "@/components/IncidentLog";
+import { InteractiveSandbox } from "@/components/InteractiveSandbox";
 import { RefreshButton } from "@/components/RefreshButton";
 import { RunSummary } from "@/components/RunSummary";
 import { getLatestRunSummary } from "@/lib/redteamDashboard";
@@ -81,6 +82,8 @@ export function DashboardShell() {
         <Suspense fallback={<TrendSkeleton />}>
           <HistoricalTrend />
         </Suspense>
+
+        <InteractiveSandbox />
 
         <Suspense fallback={<SummarySkeleton />}>
           <RunSummary />
