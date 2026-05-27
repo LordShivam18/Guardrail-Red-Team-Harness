@@ -1,6 +1,11 @@
+import "dotenv/config";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const apiKey = "AIzaSyBm_Igx9oFEmG8c4jhDIkuYkTu5_n7kHBs"; // from .env.local
+const apiKey = process.env.GEMINI_API_KEY;
+
+if (!apiKey) {
+  throw new Error("GEMINI_API_KEY is missing from environment variables.");
+}
 
 async function listModels() {
   try {
