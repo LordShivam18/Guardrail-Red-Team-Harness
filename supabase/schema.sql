@@ -20,6 +20,7 @@ create table redteam_runs (
   fp_rate double precision not null default 0,
   safety_mean double precision not null default 0,
   safety_variance double precision not null default 0,
+  max_compute_shift double precision not null default 0,
   safety_sharpe double precision not null default 0,
   certificate_hash text,
   created_at timestamptz not null default now(),

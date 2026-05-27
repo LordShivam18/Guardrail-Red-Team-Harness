@@ -117,25 +117,62 @@ export function getEnterpriseTaxonomy(category: string): EnterpriseTaxonomy {
   };
 }
 
-async function getLatestRun() {
-  const rows = (await sql`
-    select
-      id,
-      timestamp,
-      model_version,
-      jailbreak_rate,
-      fp_rate,
-      safety_mean,
-      safety_variance,
-      safety_sharpe,
-      max_compute_shift,
-      certificate_hash
-    from redteam_runs
-    order by timestamp desc
-    limit 1
-  `) as RunRow[];
+async function getLatestRun(): Promise<RunRow | null> {
+  try {
+    const rows = (await sql`
+      select
+        id,
+        timestamp,
+        model_version,
+        jailbreak_rate,
+        fp_rate,
+        coalesce(safety_mean, 0) as safety_mean,
+        coalesce(safety_variance, 0) as safety_variance,
+        coalesce(safety_sharpe, 0) as safety_sharpe,
+        coalesce(max_compute_shift, 0) as max_compute_shift,
+        coalesce(certificate_hash, '') as certificate_hash
+      from redteam_runs
+      order by timestamp desc
+      limit 1
+    `) as RunRow[];
 
-  return rows[0] ?? null;
+    return rows[0] ?? null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    // If advanced telemetry columns are missing, fall back to base columns only.
+    if (/column .* does not exist/i.test(message)) {
+      console.warn(
+        `[dashboard] Advanced telemetry column missing — falling back to base query. Run the ALTER TABLE migration. Detail: ${message}`
+      );
+
+      const rows = (await sql`
+        select
+          id,
+          timestamp,
+          model_version,
+          jailbreak_rate,
+          fp_rate,
+          coalesce(safety_mean, 0) as safety_mean,
+          coalesce(safety_variance, 0) as safety_variance
+        from redteam_runs
+        order by timestamp desc
+        limit 1
+      `) as RunRow[];
+
+      const row = rows[0];
+      if (!row) return null;
+
+      return {
+        ...row,
+        safety_sharpe: 0,
+        max_compute_shift: 0,
+        certificate_hash: "N/A"
+      };
+    }
+
+    throw error;
+  }
 }
 
 export async function getLatestRunSummary(): Promise<RunSummaryData | null> {

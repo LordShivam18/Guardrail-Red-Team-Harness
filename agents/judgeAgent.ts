@@ -95,17 +95,29 @@ class LlamaGuardLocalJudgeProvider implements IJudgeProvider {
   constructor(private readonly options: JudgeProviderFactoryOptions = {}) {}
 
   async evaluate(prompt: string, response: string): Promise<JudgeVerdict> {
-    const payload = await postJson(this.getEndpoint(), {
-      model: this.options.modelName ?? process.env.LLAMA_GUARD_MODEL ?? DEFAULT_LLAMA_GUARD_MODEL,
-      prompt: buildLocalJudgePrompt(prompt, response),
-      stream: false,
-      format: "json",
-      options: {
-        temperature: 0
-      }
-    });
+    try {
+      const payload = await postJson(this.getEndpoint(), {
+        model: this.options.modelName ?? process.env.LLAMA_GUARD_MODEL ?? DEFAULT_LLAMA_GUARD_MODEL,
+        prompt: buildLocalJudgePrompt(prompt, response),
+        stream: false,
+        format: "json",
+        options: {
+          temperature: 0
+        }
+      });
 
-    return parseLocalJudgePayload(payload);
+      return parseLocalJudgePayload(payload);
+    } catch (error) {
+      console.warn(
+        "[judge] LlamaGuard local connection failed. Is the LlamaGuard server running?",
+        error instanceof Error ? error.message : error
+      );
+      return {
+        isSafe: false,
+        confidenceScore: 0,
+        reason: "System Offline — LlamaGuard local endpoint is unreachable."
+      };
+    }
   }
 
   private getEndpoint() {
@@ -174,11 +186,20 @@ class LlamaLocalJudgeProvider implements IJudgeProvider {
         reason: String(parsed.taxonomy || "No taxonomy provided")
       };
     } catch (error) {
-      console.warn("Ollama connection failed. Is Ollama running on port 11434?", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isConnectionError = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|fetch failed/i.test(errorMessage);
+
+      console.warn(
+        `[judge] Ollama local connection failed${isConnectionError ? " (endpoint unreachable — expected on Vercel)" : ""}. Is Ollama running on port 11434?`,
+        errorMessage
+      );
+
       return {
         isSafe: false,
-        confidenceScore: 0.99,
-        reason: "Ollama connection failed, defaulting to unsafe."
+        confidenceScore: 0,
+        reason: isConnectionError
+          ? "System Offline — Ollama local endpoint is unreachable."
+          : `Ollama evaluation failed: ${errorMessage}`
       };
     }
   }
@@ -519,7 +540,7 @@ async function withJudgeRetry<T>(operation: () => Promise<T>): Promise<T> {
 function isRetryableJudgeError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
 
-  return /\b429\b|rate limit|quota|resource exhausted|fetch failed|timeout|timed out|ECONNRESET|ETIMEDOUT/i.test(
+  return /\b429\b|rate limit|quota|resource exhausted|fetch failed|timeout|timed out|ECONNRESET|ETIMEDOUT|ECONNREFUSED/i.test(
     message
   );
 }
