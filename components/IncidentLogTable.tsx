@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { IncidentLogRow } from "@/lib/redteamDashboard";
+import { getRemediationPlaybook } from "@/lib/remediationPlaybooks";
 
 type IncidentLogTableProps = {
   incidents: IncidentLogRow[];
@@ -271,6 +272,98 @@ function DiffPane({ label, sourceName, text, tone, blocked = false }: DiffPanePr
   );
 }
 
+function MitigationPlaybookSection({ incident }: { incident: IncidentLogRow }) {
+  const playbook = getRemediationPlaybook(incident.complianceVector.label);
+
+  if (!playbook) {
+    return (
+      <section className="mt-5 rounded-md border border-neutral-800 bg-neutral-950 p-4">
+        <p className="font-mono text-xs font-medium uppercase tracking-[0.16em] text-neutral-500">
+          Mitigation Playbook
+        </p>
+        <h3 className="mt-2 text-lg font-black tracking-tight text-white">
+          No Playbook Available
+        </h3>
+        <p className="mt-3 text-sm text-neutral-500">
+          No remediation playbook is mapped for classification &quot;{incident.complianceVector.label}&quot;.
+          Escalate to the SOC team for manual triage.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mt-5 rounded-md border border-neutral-800 bg-neutral-950 p-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="font-mono text-xs font-medium uppercase tracking-[0.16em] text-neutral-500">
+            Mitigation Playbook
+          </p>
+          <h3 className="mt-2 text-lg font-black tracking-tight text-white">
+            {playbook.playbookId}: Remediation Protocol
+          </h3>
+        </div>
+        <span className="font-mono text-xs text-neutral-600">
+          {playbook.steps.length} steps
+        </span>
+      </div>
+
+      {/* Regulatory badges */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        {playbook.regulatoryBadges.map((badge) => (
+          <span
+            className="inline-flex rounded-none border border-neutral-700 bg-neutral-900 px-2.5 py-1 font-mono text-[11px] font-bold uppercase text-neutral-300"
+            key={badge}
+          >
+            {badge}
+          </span>
+        ))}
+      </div>
+
+      {/* Summary */}
+      <p className="mt-4 text-sm leading-6 text-neutral-400">
+        {playbook.summary}
+      </p>
+
+      {/* Numbered steps */}
+      <div className="mt-4 rounded-md border border-neutral-800 bg-black">
+        <div className="border-b border-neutral-800 px-4 py-2">
+          <span className="font-mono text-[11px] uppercase tracking-wider text-neutral-600">
+            remediation &gt; steps
+          </span>
+        </div>
+        <ol className="divide-y divide-neutral-800">
+          {playbook.steps.map((step, index) => (
+            <li className="flex gap-4 px-4 py-3" key={index}>
+              <span className="flex-none font-mono text-xs font-bold text-neutral-600">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <p className="text-sm leading-6 text-neutral-300">{step}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      {/* Code snippet */}
+      {playbook.codeSnippet && (
+        <div className="mt-4 rounded-md border border-neutral-800 bg-black">
+          <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-2">
+            <span className="font-mono text-[11px] uppercase tracking-wider text-neutral-600">
+              {playbook.codeSnippet.label}
+            </span>
+            <span className="rounded-none border border-neutral-700 bg-neutral-900 px-2 py-0.5 font-mono text-[10px] uppercase text-neutral-500">
+              {playbook.codeSnippet.language}
+            </span>
+          </div>
+          <pre className="max-h-64 overflow-auto px-4 py-3 font-mono text-xs leading-6 text-neutral-400">
+            {playbook.codeSnippet.code}
+          </pre>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function AttemptDetailDrawer({
   incident,
   onClose
@@ -425,6 +518,8 @@ function AttemptDetailDrawer({
               ))}
             </div>
           </section>
+
+          <MitigationPlaybookSection incident={incident} />
 
           <div className="mt-5 grid gap-4 xl:grid-cols-2">
             <DiffPane
