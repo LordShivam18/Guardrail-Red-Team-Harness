@@ -168,8 +168,11 @@ export async function GET() {
       metrics: {
         totalInteractions: summary.totalTests,
         jailbreakRate: summary.jailbreakRate,
-        falsePositiveRate: summary.falsePositiveRate
+        falsePositiveRate: summary.falsePositiveRate,
+        safetySharpe: summary.safetySharpe ?? null,
+        maxComputeShift: summary.maxComputeShift ?? null
       },
+      certificateHash: summary.certificateHash ?? null,
       confusionMatrix: getConfusionMatrix(incidentLog.incidents),
       owaspRuleMatches: getOwaspRuleMatches(incidentLog.incidents),
       regulatoryAuditRequirements: getRegulatoryAuditRequirements(incidentLog.incidents)

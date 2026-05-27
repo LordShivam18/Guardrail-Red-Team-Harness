@@ -14,7 +14,10 @@ type ReportPayload = {
     totalInteractions: number;
     jailbreakRate: number;
     falsePositiveRate: number;
+    safetySharpe: number | null;
+    maxComputeShift: number | null;
   };
+  certificateHash: string | null;
   confusionMatrix: {
     truePositive: number;
     falseNegative: number;
@@ -168,6 +171,12 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
   drawLabelValue("Run Identifier", payload.run.id);
   drawLabelValue("Run Timestamp", formatTimestamp(payload.run.timestamp));
   drawLabelValue("Pipeline Heartbeat", payload.pipelineHeartbeatStatus);
+  drawLabelValue(
+    "Cryptographic Hash",
+    payload.certificateHash
+      ? `\uD83D\uDD12 ${payload.certificateHash}`
+      : "Not available"
+  );
 
   drawSectionTitle("Executive Metrics");
   const cardGap = 12;
@@ -195,6 +204,29 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
     "False Positive",
     formatPercent(payload.metrics.falsePositiveRate),
     "Safe prompts blocked by mistake"
+  );
+  cursorY += 106;
+
+  const advancedCardWidth = (contentWidth - cardGap) / 2;
+  drawMetricCard(
+    marginX,
+    cursorY,
+    advancedCardWidth,
+    "Safety Sharpe Ratio (SSR)",
+    payload.metrics.safetySharpe != null
+      ? payload.metrics.safetySharpe.toFixed(3)
+      : "N/A",
+    "Risk-adjusted safety performance metric."
+  );
+  drawMetricCard(
+    marginX + advancedCardWidth + cardGap,
+    cursorY,
+    advancedCardWidth,
+    "Compute Exhaustion (\u0394C)",
+    payload.metrics.maxComputeShift != null
+      ? payload.metrics.maxComputeShift.toFixed(3)
+      : "N/A",
+    "Maximum delta shift in compute resources (Potential DoS threshold)."
   );
   cursorY += 106;
 
