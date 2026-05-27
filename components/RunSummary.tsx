@@ -1,5 +1,7 @@
 import { getLatestRunSummary } from "@/lib/redteamDashboard";
 
+type StatIntent = "neutral" | "danger" | "warning" | "success";
+
 function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
@@ -57,13 +59,13 @@ export async function RunSummary() {
         label: "Safety Sharpe Ratio (SSR)",
         value: summary.safetySharpe?.toFixed(2) || "N/A",
         detail: "Risk-adjusted safety",
-        intent: (summary.safetySharpe && summary.safetySharpe > 1.5 ? "success" : "warning") as const
+        intent: (summary.safetySharpe && summary.safetySharpe > 1.5 ? "success" : "warning") as StatIntent
       },
       {
         label: "Compute Exhaustion (ΔC)",
         value: summary.maxComputeShift?.toFixed(2) || "N/A",
         detail: summary.maxComputeShift && summary.maxComputeShift > 3.0 ? "Potential DoS" : "Stable compute",
-        intent: (summary.maxComputeShift && summary.maxComputeShift > 3.0 ? "danger" : "neutral") as const
+        intent: (summary.maxComputeShift && summary.maxComputeShift > 3.0 ? "danger" : "neutral") as StatIntent
       }
     ];
 
