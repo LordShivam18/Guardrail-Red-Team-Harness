@@ -174,7 +174,7 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
         </div>
       </div>
 
-      <div className="h-[24rem] border-t border-white/10 bg-[radial-gradient(circle_at_22%_16%,rgba(244,63,94,0.16),transparent_34%),radial-gradient(circle_at_82%_20%,rgba(16,185,129,0.12),transparent_28%),rgba(2,6,23,0.72)] px-2 py-4 sm:px-4">
+      <div className="w-full h-[400px] min-h-[400px] border-t border-white/10 bg-[radial-gradient(circle_at_22%_16%,rgba(244,63,94,0.16),transparent_34%),radial-gradient(circle_at_82%_20%,rgba(16,185,129,0.12),transparent_28%),rgba(2,6,23,0.72)] px-2 py-4 sm:px-4">
         <ResponsiveContainer height="100%" width="100%">
           <AreaChart
             data={chartData}

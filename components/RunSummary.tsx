@@ -50,11 +50,23 @@ export async function RunSummary() {
         label: "Total Tests",
         value: summary.totalTests.toLocaleString(),
         detail: `Completed ${formatTimestamp(summary.timestamp)}`
+      },
+      {
+        label: "Safety Sharpe Ratio (SSR)",
+        value: summary.safetySharpe?.toFixed(2) || "N/A",
+        detail: "Risk-adjusted safety",
+        intent: summary.safetySharpe && summary.safetySharpe > 1.5 ? "success" : "warning"
+      },
+      {
+        label: "Compute Exhaustion (ΔC)",
+        value: summary.maxComputeShift?.toFixed(2) || "N/A",
+        detail: summary.maxComputeShift && summary.maxComputeShift > 3.0 ? "Potential DoS" : "Stable compute",
+        intent: summary.maxComputeShift && summary.maxComputeShift > 3.0 ? "danger" : undefined
       }
     ];
 
     return (
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {stats.map((stat) => (
           <article
             key={stat.label}
@@ -70,7 +82,9 @@ export async function RunSummary() {
                     ? "h-2 w-2 rounded-full bg-rose-400 shadow-[0_0_16px_rgba(251,113,133,0.9)]"
                     : stat.intent === "warning"
                       ? "h-2 w-2 rounded-full bg-amber-300 shadow-[0_0_16px_rgba(252,211,77,0.85)]"
-                      : "h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(103,232,249,0.85)]"
+                      : stat.intent === "success"
+                        ? "h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_16px_rgba(52,211,153,0.9)]"
+                        : "h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(103,232,249,0.85)]"
                 }
               />
             </div>

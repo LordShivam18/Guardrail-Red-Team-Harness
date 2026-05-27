@@ -4,7 +4,7 @@ import {
   HarmCategory
 } from "@google/generative-ai";
 
-const DEFAULT_JUDGE_MODEL_NAME = "gemini-1.5-pro";
+const DEFAULT_JUDGE_MODEL_NAME = "gemini-2.0-flash";
 const DEFAULT_ACTIVE_JUDGE_PROVIDER: JudgeProviderName = "gemini-native";
 const DEFAULT_LLAMA_GUARD_ENDPOINT = "http://127.0.0.1:11434/api/generate";
 const DEFAULT_LLAMA_GUARD_MODEL = "llama-guard3";

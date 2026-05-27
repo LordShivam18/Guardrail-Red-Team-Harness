@@ -8,6 +8,11 @@ type RunRow = {
   model_version: string;
   jailbreak_rate: number;
   fp_rate: number;
+  safety_mean?: number;
+  safety_variance?: number;
+  safety_sharpe?: number;
+  max_compute_shift?: number;
+  certificate_hash?: string;
 };
 
 type ResultRow = {
@@ -37,6 +42,11 @@ export type RunSummaryData = {
   jailbreakRate: number;
   falsePositiveRate: number;
   totalTests: number;
+  safetyMean?: number;
+  safetyVariance?: number;
+  safetySharpe?: number;
+  maxComputeShift?: number;
+  certificateHash?: string;
 };
 
 export type IncidentLogRow = {
@@ -114,7 +124,12 @@ async function getLatestRun() {
       timestamp,
       model_version,
       jailbreak_rate,
-      fp_rate
+      fp_rate,
+      safety_mean,
+      safety_variance,
+      safety_sharpe,
+      max_compute_shift,
+      certificate_hash
     from redteam_runs
     order by timestamp desc
     limit 1
@@ -142,7 +157,12 @@ export async function getLatestRunSummary(): Promise<RunSummaryData | null> {
     modelVersion: latestRun.model_version,
     jailbreakRate: latestRun.jailbreak_rate,
     falsePositiveRate: latestRun.fp_rate,
-    totalTests: countRows[0]?.total_tests ?? 0
+    totalTests: countRows[0]?.total_tests ?? 0,
+    safetyMean: latestRun.safety_mean,
+    safetyVariance: latestRun.safety_variance,
+    safetySharpe: latestRun.safety_sharpe,
+    maxComputeShift: latestRun.max_compute_shift,
+    certificateHash: latestRun.certificate_hash
   };
 }
 

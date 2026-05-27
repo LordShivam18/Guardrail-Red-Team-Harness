@@ -217,7 +217,7 @@ function normalizeModelName(modelName?: string) {
     case "gemini 2.0 flash":
       return "gemini-2.0-flash";
     case "gemini 1.5 pro":
-      return "gemini-1.5-pro";
+      return "gemini-2.0-flash";
     default:
       return normalized;
   }

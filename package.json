@@ -14,7 +14,8 @@
     "worker:evaluation": "node \"./node_modules/tsx/dist/cli.mjs\" \"./workers/evaluationWorker.ts\"",
     "db:check-schema": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/checkSchema.ts\"",
     "cleanup:data": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/cleanupData.ts\"",
-    "secops:scan": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/scanSecrets.ts\""
+    "secops:scan": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/scanSecrets.ts\"",
+    "test:proxy": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/testProxy.ts\""
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

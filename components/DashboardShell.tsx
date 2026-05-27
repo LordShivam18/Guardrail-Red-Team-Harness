@@ -4,6 +4,17 @@ import { HistoricalTrend } from "@/components/HistoricalTrend";
 import { IncidentLog } from "@/components/IncidentLog";
 import { RefreshButton } from "@/components/RefreshButton";
 import { RunSummary } from "@/components/RunSummary";
+import { getLatestRunSummary } from "@/lib/redteamDashboard";
+
+async function CertificateBadge() {
+  const summary = await getLatestRunSummary();
+  if (!summary || !summary.certificateHash) return null;
+  return (
+    <span className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300 shadow-sm">
+      🔒 Cryptographically Verified ({summary.certificateHash.slice(0, 8)})
+    </span>
+  );
+}
 
 function SummarySkeleton() {
   return (
@@ -51,6 +62,9 @@ export function DashboardShell() {
                 </span>
                 Pipeline: Automated (Nightly Cron Active)
               </span>
+              <Suspense fallback={null}>
+                <CertificateBadge />
+              </Suspense>
             </div>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
               Monitor the latest Neon-backed run, inspect failure modes, and isolate
