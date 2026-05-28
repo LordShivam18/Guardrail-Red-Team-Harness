@@ -4,7 +4,8 @@ import {
   type GenerationConfig,
   GoogleGenerativeAI,
   HarmBlockThreshold,
-  HarmCategory
+  HarmCategory,
+  type Part
 } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { judgeAgent } from "@/agents/judgeAgent";
@@ -531,7 +532,7 @@ function getGeminiContents(messages: ChatCompletionMessage[]): Content[] {
     .filter((message) => message.role.toLowerCase() !== "system")
     .map((message) => ({
       role: message.role.toLowerCase() === "assistant" ? "model" : "user",
-      parts: [{ text: message.content }]
+      parts: mapContentToParts(message.content)
     }));
 
   if (contents.length === 0) {
@@ -541,10 +542,46 @@ function getGeminiContents(messages: ChatCompletionMessage[]): Content[] {
   return contents;
 }
 
+/**
+ * Maps our `string | ContentPart[]` union to the Gemini SDK `Part[]` format.
+ *
+ * - Plain strings → `[{ text }]`
+ * - ContentPartText → `{ text }`
+ * - ContentPartImageUrl → parses `data:<mimeType>;base64,<data>` into
+ *   `{ inlineData: { mimeType, data } }`
+ */
+function mapContentToParts(content: string | ContentPart[]): Part[] {
+  if (typeof content === "string") {
+    return [{ text: content }];
+  }
+
+  return content.map((part): Part => {
+    if (part.type === "text") {
+      return { text: part.text };
+    }
+
+    // part.type === "image_url"
+    const url = part.image_url.url;
+    const dataUriMatch = url.match(/^data:([^;]+);base64,(.+)$/);
+
+    if (dataUriMatch) {
+      return {
+        inlineData: {
+          mimeType: dataUriMatch[1],
+          data: dataUriMatch[2]
+        }
+      };
+    }
+
+    // Fallback: if it's a plain URL (not a data URI), pass as text reference
+    return { text: `[Image: ${url.slice(0, 120)}]` };
+  });
+}
+
 function getSystemInstruction(messages: ChatCompletionMessage[]) {
   return messages
     .filter((message) => message.role.toLowerCase() === "system")
-    .map((message) => message.content.trim())
+    .map((message) => extractTextContent(message.content))
     .filter(Boolean)
     .join("\n\n");
 }
