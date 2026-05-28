@@ -13,6 +13,16 @@ type MutationStrategy = {
   enabled: boolean;
 };
 
+type MeshPayload = {
+  id: string;
+  payload_text: string;
+  vector_category: string;
+  mitre_atlas_id: string | null;
+  owasp_llm_id: string | null;
+  success_rate_historical: number;
+  severity: string;
+};
+
 type TargetModel = {
   id: string;
   label: string;
@@ -35,6 +45,11 @@ type FuzzerState = "idle" | "running" | "complete" | "aborted";
 // ---------------------------------------------------------------------------
 
 const TARGET_MODELS: TargetModel[] = [
+  {
+    id: "mesh-cert",
+    label: "Official Mesh Certification Run",
+    endpoint: "/api/proxy/v1/chat/completions"
+  },
   {
     id: "qwen2-local",
     label: "qwen2:1.5b (Air-gapped)",
@@ -218,6 +233,7 @@ export function FuzzerPanel() {
 
   const enabledStrategies = strategies.filter((s) => s.enabled);
   const selectedModel = TARGET_MODELS.find((m) => m.id === targetModel) ?? TARGET_MODELS[0];
+  const isMeshCert = targetModel === "mesh-cert";
 
   const toggleStrategy = useCallback((id: string) => {
     setStrategies((prev) =>
@@ -234,25 +250,54 @@ export function FuzzerPanel() {
   }, []);
 
   const runFuzzer = useCallback(async () => {
-    if (enabledStrategies.length === 0) return;
+    if (!isMeshCert && enabledStrategies.length === 0) return;
 
     abortRef.current = false;
     setFuzzerState("running");
     setLogs([]);
     setStats({ blocked: 0, allowed: 0, errors: 0 });
-    setProgress({ current: 0, total: payloadCount });
 
     const localStats = { blocked: 0, allowed: 0, errors: 0 };
 
-    for (let i = 1; i <= payloadCount; i++) {
+    // ── Mesh Certification: fetch from database ──────────────────────
+    let meshPayloads: MeshPayload[] = [];
+    if (isMeshCert) {
+      try {
+        const resp = await fetch("/api/mesh-payloads");
+        const data = await resp.json();
+        meshPayloads = data.payloads ?? [];
+      } catch {
+        setLogs([{
+          index: 0, total: 0, strategy: "MESH-10K",
+          status: "ERROR", latencyMs: 0, timestamp: new Date().toISOString()
+        }]);
+        setFuzzerState("aborted");
+        return;
+      }
+    }
+
+    const totalIterations = isMeshCert ? meshPayloads.length : payloadCount;
+    setProgress({ current: 0, total: totalIterations });
+
+    for (let i = 1; i <= totalIterations; i++) {
       if (abortRef.current) {
         setFuzzerState("aborted");
         return;
       }
 
-      const strategy = pickRandom(enabledStrategies);
-      const basePaylod = pickRandom(SEED_PAYLOADS);
-      const mutatedPayload = applyMutation(basePaylod, strategy.id);
+      let mutatedPayload: string;
+      let strategyLabel: string;
+
+      if (isMeshCert) {
+        const meshEntry = meshPayloads[i - 1];
+        mutatedPayload = meshEntry.payload_text;
+        strategyLabel = `${meshEntry.vector_category} [${meshEntry.severity.toUpperCase()}]`;
+      } else {
+        const strategy = pickRandom(enabledStrategies);
+        const basePaylod = pickRandom(SEED_PAYLOADS);
+        mutatedPayload = applyMutation(basePaylod, strategy.id);
+        strategyLabel = strategy.label;
+      }
 
       const start = performance.now();
       let status: FuzzerLogEntry["status"] = "FIRED";
@@ -270,7 +315,7 @@ export function FuzzerPanel() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messages: [{ role: "user", content: messageContent }],
-            model: selectedModel.id,
+            model: isMeshCert ? "gemini-2.0-flash" : selectedModel.id,
             stream: false
           })
         });
@@ -290,15 +335,15 @@ export function FuzzerPanel() {
 
         const entry: FuzzerLogEntry = {
           index: i,
-          total: payloadCount,
-          strategy: strategy.label,
+          total: totalIterations,
+          strategy: strategyLabel,
           status,
           latencyMs: latency,
           timestamp: new Date().toISOString()
         };
 
         setLogs((prev) => [...prev, entry]);
-        setProgress({ current: i, total: payloadCount });
+        setProgress({ current: i, total: totalIterations });
         setStats({ ...localStats });
         scrollTerminal();
       } catch {
@@ -309,21 +354,21 @@ export function FuzzerPanel() {
           ...prev,
           {
             index: i,
-            total: payloadCount,
-            strategy: strategy.label,
+            total: totalIterations,
+            strategy: strategyLabel,
             status: "ERROR",
             latencyMs: latency,
             timestamp: new Date().toISOString()
           }
         ]);
-        setProgress({ current: i, total: payloadCount });
+        setProgress({ current: i, total: totalIterations });
         setStats({ ...localStats });
         scrollTerminal();
       }
     }
 
     setFuzzerState("complete");
-  }, [enabledStrategies, payloadCount, selectedModel, scrollTerminal, visionPayload]);
+  }, [enabledStrategies, payloadCount, selectedModel, scrollTerminal, visionPayload, isMeshCert]);
 
   const abortFuzzer = useCallback(() => {
     abortRef.current = true;
@@ -432,26 +477,42 @@ export function FuzzerPanel() {
 
           {/* Payload count */}
           <div>
-            <label className="block">
-              <span className="font-mono text-[11px] uppercase tracking-wider text-neutral-600">
-                attack &gt; volume
-              </span>
-              <div className="mt-2 flex items-center gap-3">
-                <input
-                  className="h-2 flex-1 cursor-pointer appearance-none rounded-none bg-neutral-800 accent-white [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-none [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-neutral-600 [&::-webkit-slider-thumb]:bg-white"
-                  disabled={fuzzerState === "running"}
-                  max={200}
-                  min={5}
-                  onChange={(e) => setPayloadCount(Number(e.target.value))}
-                  step={5}
-                  type="range"
-                  value={payloadCount}
-                />
-                <span className="w-14 rounded-none border border-neutral-800 bg-neutral-950 px-2 py-1 text-center font-mono text-sm font-bold text-white">
-                  {payloadCount}
+            {isMeshCert ? (
+              <div>
+                <span className="font-mono text-[11px] uppercase tracking-wider text-neutral-600">
+                  attack &gt; volume
                 </span>
+                <div className="mt-2 flex items-center gap-3">
+                  <span className="inline-flex rounded-none border border-white/20 bg-white/5 px-3 py-2 font-mono text-sm font-bold uppercase text-white">
+                    MESH-10K DATABASE
+                  </span>
+                  <span className="font-mono text-xs text-neutral-500">
+                    All payloads from mesh_zero_days
+                  </span>
+                </div>
               </div>
-            </label>
+            ) : (
+              <label className="block">
+                <span className="font-mono text-[11px] uppercase tracking-wider text-neutral-600">
+                  attack &gt; volume
+                </span>
+                <div className="mt-2 flex items-center gap-3">
+                  <input
+                    className="h-2 flex-1 cursor-pointer appearance-none rounded-none bg-neutral-800 accent-white [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-none [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-neutral-600 [&::-webkit-slider-thumb]:bg-white"
+                    disabled={fuzzerState === "running"}
+                    max={200}
+                    min={5}
+                    onChange={(e) => setPayloadCount(Number(e.target.value))}
+                    step={5}
+                    type="range"
+                    value={payloadCount}
+                  />
+                  <span className="w-14 rounded-none border border-neutral-800 bg-neutral-950 px-2 py-1 text-center font-mono text-sm font-bold text-white">
+                    {payloadCount}
+                  </span>
+                </div>
+              </label>
+            )}
           </div>
         </div>
 
@@ -512,20 +573,38 @@ export function FuzzerPanel() {
         </div>
 
         {/* Mutation strategies */}
-        <div className="mt-5">
-          <span className="font-mono text-[11px] uppercase tracking-wider text-neutral-600">
-            mutation &gt; strategies ({enabledStrategies.length} active)
-          </span>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {strategies.map((strategy) => (
-              <StrategyToggle
-                key={strategy.id}
-                onToggle={fuzzerState === "running" ? () => {} : toggleStrategy}
-                strategy={strategy}
-              />
-            ))}
+        {isMeshCert ? (
+          <div className="mt-5">
+            <span className="font-mono text-[11px] uppercase tracking-wider text-neutral-600">
+              mutation &gt; strategies
+            </span>
+            <div className="mt-2 rounded-md border border-neutral-800 bg-neutral-950 p-4">
+              <p className="font-mono text-xs font-bold uppercase text-white">
+                Mutation disabled — Official Certification Mode
+              </p>
+              <p className="mt-1 font-mono text-[11px] text-neutral-500">
+                Payloads are sourced directly from the Mesh-10K vulnerability database
+                without client-side mutation. Raw payloads are tested as-is for
+                standardized scoring.
+              </p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="mt-5">
+            <span className="font-mono text-[11px] uppercase tracking-wider text-neutral-600">
+              mutation &gt; strategies ({enabledStrategies.length} active)
+            </span>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {strategies.map((strategy) => (
+                <StrategyToggle
+                  key={strategy.id}
+                  onToggle={fuzzerState === "running" ? () => {} : toggleStrategy}
+                  strategy={strategy}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Launch / Abort button */}
         <div className="mt-5">
@@ -540,11 +619,13 @@ export function FuzzerPanel() {
           ) : (
             <button
               className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-white font-mono text-sm font-bold uppercase tracking-wider text-black transition hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-30"
-              disabled={enabledStrategies.length === 0}
+              disabled={!isMeshCert && enabledStrategies.length === 0}
               onClick={runFuzzer}
               type="button"
             >
-              INITIALIZE FUZZER SEQUENCE ↗
+              {isMeshCert
+                ? "EXECUTE MESH-10K CERTIFICATION ↗"
+                : "INITIALIZE FUZZER SEQUENCE ↗"}
             </button>
           )}
         </div>
