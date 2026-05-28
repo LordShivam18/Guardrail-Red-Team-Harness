@@ -1,10 +1,12 @@
 import { Suspense } from "react";
 import { ExportReportButton } from "@/components/ExportReportButton";
+import { FuzzerPanel } from "@/components/FuzzerPanel";
 import { HistoricalTrend } from "@/components/HistoricalTrend";
 import { IncidentLog } from "@/components/IncidentLog";
 import { InteractiveSandbox } from "@/components/InteractiveSandbox";
 import { RefreshButton } from "@/components/RefreshButton";
 import { RunSummary } from "@/components/RunSummary";
+import { ToolingTabs } from "@/components/ToolingTabs";
 import { getLatestRunSummary } from "@/lib/redteamDashboard";
 
 async function CertificateBadge() {
@@ -83,7 +85,10 @@ export function DashboardShell() {
           <HistoricalTrend />
         </Suspense>
 
-        <InteractiveSandbox />
+        <ToolingTabs
+          sandboxSlot={<InteractiveSandbox />}
+          fuzzerSlot={<FuzzerPanel />}
+        />
 
         <Suspense fallback={<SummarySkeleton />}>
           <RunSummary />
