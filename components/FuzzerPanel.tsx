@@ -440,7 +440,7 @@ export function FuzzerPanel() {
           ) : (
             <button
               className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-white font-mono text-sm font-bold uppercase tracking-wider text-black transition hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-30"
-              disabled={enabledStrategies.length === 0 || fuzzerState === "running"}
+              disabled={enabledStrategies.length === 0}
               onClick={runFuzzer}
               type="button"
             >
