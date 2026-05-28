@@ -18,9 +18,21 @@ const MAX_SHADOW_PROMPT_LENGTH = 4_000;
 const STREAM_SANITIZER_CARRY_CHARS = 96;
 const SAFETY_REFUSAL = "I am sorry, but I cannot assist with that request.";
 
+type ContentPartText = {
+  type: "text";
+  text: string;
+};
+
+type ContentPartImageUrl = {
+  type: "image_url";
+  image_url: { url: string };
+};
+
+type ContentPart = ContentPartText | ContentPartImageUrl;
+
 type ChatCompletionMessage = {
   role: string;
-  content: string;
+  content: string | ContentPart[];
 };
 
 type ParsedChatCompletionRequest = {
@@ -122,8 +134,67 @@ function parseMessage(value: unknown, index: number): ChatCompletionMessage {
     throw new RequestValidationError(`messages[${index}].role must be a non-empty string.`);
   }
 
+  // Multi-modal: content is an array of { type, text/image_url } objects
+  if (Array.isArray(value.content)) {
+    const parts: ContentPart[] = [];
+
+    for (const part of value.content) {
+      if (!isJsonRecord(part) || typeof part.type !== "string") {
+        throw new RequestValidationError(
+          `messages[${index}].content[] entries must have a string \`type\` field.`
+        );
+      }
+
+      if (part.type === "text") {
+        if (typeof part.text !== "string") {
+          throw new RequestValidationError(
+            `messages[${index}].content[] text part must have a string \`text\` field.`
+          );
+        }
+        parts.push({ type: "text", text: part.text });
+      } else if (part.type === "image_url") {
+        if (
+          !isJsonRecord(part.image_url) ||
+          typeof part.image_url.url !== "string"
+        ) {
+          throw new RequestValidationError(
+            `messages[${index}].content[] image_url part must have an \`image_url.url\` string.`
+          );
+        }
+        parts.push({
+          type: "image_url",
+          image_url: { url: part.image_url.url }
+        });
+      }
+      // Unknown part types are silently dropped for forward compatibility
+    }
+
+    if (parts.length === 0) {
+      throw new RequestValidationError(
+        `messages[${index}].content must contain at least one text or image_url part.`
+      );
+    }
+
+    // Validate total text length across all text parts
+    const totalTextLength = parts
+      .filter((p): p is ContentPartText => p.type === "text")
+      .reduce((sum, p) => sum + p.text.length, 0);
+
+    if (totalTextLength > MAX_MESSAGE_CONTENT_LENGTH) {
+      throw new RequestValidationError(
+        `messages[${index}].content text exceeds ${MAX_MESSAGE_CONTENT_LENGTH} characters.`,
+        413
+      );
+    }
+
+    return { role: value.role.trim(), content: parts };
+  }
+
+  // Legacy: content is a plain string
   if (typeof value.content !== "string") {
-    throw new RequestValidationError(`messages[${index}].content must be a string.`);
+    throw new RequestValidationError(
+      `messages[${index}].content must be a string or an array of content parts.`
+    );
   }
 
   if (value.content.length > MAX_MESSAGE_CONTENT_LENGTH) {
@@ -223,15 +294,42 @@ function parseOptionalNumber(value: unknown, fieldName: string) {
   return value;
 }
 
+/**
+ * Extract only the text content from the last incoming message.
+ * For multi-modal payloads, this concatenates all text parts and ignores
+ * image_url parts — the judge evaluates the *instructions*, not the pixels.
+ */
 function getLastIncomingContent(messages: ChatCompletionMessage[]) {
   const lastMessage = messages[messages.length - 1];
-  const content = lastMessage?.content.trim();
+
+  if (!lastMessage) {
+    throw new RequestValidationError("The messages array must not be empty.");
+  }
+
+  const content = extractTextContent(lastMessage.content);
 
   if (!content) {
     throw new RequestValidationError("The last message content must be non-empty.");
   }
 
   return content;
+}
+
+/**
+ * Extracts text from either a plain string content field or a multi-modal
+ * content array. For arrays, concatenates all text parts separated by
+ * newlines and trims the result.
+ */
+function extractTextContent(content: string | ContentPart[]): string {
+  if (typeof content === "string") {
+    return content.trim();
+  }
+
+  return content
+    .filter((part): part is ContentPartText => part.type === "text")
+    .map((part) => part.text)
+    .join("\n")
+    .trim();
 }
 
 function scheduleShadowSandboxEvaluation(prompt: string, targetModel: string) {
