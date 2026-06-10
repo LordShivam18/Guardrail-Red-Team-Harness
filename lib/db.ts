@@ -23,6 +23,7 @@ type ModelComparisonSummaryRow = {
   avg_jailbreak_rate: number;
   avg_fp_rate: number;
   avg_safety_sharpe: number;
+  modalities_covered: string[] | null;
 };
 
 export type HistoricalRunSummary = {
@@ -45,6 +46,7 @@ export type ModelComparisonSummary = {
   avgJailbreakRate: number;
   avgFpRate: number;
   avgSafetySharpe: number;
+  modalitiesCovered: string[];
 };
 
 let sqlClient: SqlClient | undefined;
@@ -165,6 +167,7 @@ export async function getModelComparisonSummary(): Promise<ModelComparisonSummar
       select
         runs.model_version as model_name,
         results.outcome_flag::text as outcome_flag,
+        coalesce(nullif(to_jsonb(results)->>'modality', ''), 'text') as modality,
         coalesce(nullif(lower(trim(prompts.category)), ''), 'unknown') as category,
         nullif(
           coalesce(
@@ -183,6 +186,7 @@ export async function getModelComparisonSummary(): Promise<ModelComparisonSummar
       select
         model_name,
         outcome_flag,
+        modality,
         category,
         case
           when raw_latency_ms ~ '^[0-9]+(\\.[0-9]+)?$'
@@ -217,7 +221,8 @@ export async function getModelComparisonSummary(): Promise<ModelComparisonSummar
           )::double precision
         end as defusal_success_rate,
         round(avg(latency_ms)::numeric, 2)::double precision as average_latency_ms,
-        count(*) filter (where outcome_flag = 'FP')::int as false_positive_count
+        count(*) filter (where outcome_flag = 'FP')::int as false_positive_count,
+        array_remove(array_agg(distinct modality), null) as modalities_covered
       from normalized_metrics
       group by model_name
     )
@@ -247,7 +252,8 @@ export async function getModelComparisonSummary(): Promise<ModelComparisonSummar
       coalesce(
         result_aggregates.false_positive_count,
         round((run_metrics.avg_fp_rate * run_metrics.run_count)::numeric, 0)::int
-      )::int as false_positive_count
+      )::int as false_positive_count,
+      coalesce(result_aggregates.modalities_covered, array['text']::text[]) as modalities_covered
     from run_metrics
     left join result_aggregates
       on result_aggregates.model_name = run_metrics.model_name
@@ -266,11 +272,13 @@ export async function getModelComparisonSummary(): Promise<ModelComparisonSummar
       model_name asc
   `) as ModelComparisonSummaryRow[];
 
-  return rows.map((row) => {
+  const summaries = rows.map((row) => {
+    const modalitiesCovered = normalizeModalities(row.modalities_covered);
     const meshScore = calculateMeshScore(
       row.avg_jailbreak_rate,
       row.avg_fp_rate,
-      row.avg_safety_sharpe
+      row.avg_safety_sharpe,
+      modalitiesCovered
     );
 
     return {
@@ -285,7 +293,28 @@ export async function getModelComparisonSummary(): Promise<ModelComparisonSummar
       falsePositiveCount: row.false_positive_count,
       avgJailbreakRate: row.avg_jailbreak_rate,
       avgFpRate: row.avg_fp_rate,
-      avgSafetySharpe: row.avg_safety_sharpe
+      avgSafetySharpe: row.avg_safety_sharpe,
+      modalitiesCovered
     };
   });
+
+  return summaries.sort((left, right) => {
+    if (right.meshScore !== left.meshScore) {
+      return right.meshScore - left.meshScore;
+    }
+
+    if (right.defusalSuccessRate !== left.defusalSuccessRate) {
+      return right.defusalSuccessRate - left.defusalSuccessRate;
+    }
+
+    return left.modelName.localeCompare(right.modelName);
+  });
+}
+
+function normalizeModalities(values: string[] | null | undefined) {
+  const modalities = (values ?? [])
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  return modalities.length > 0 ? [...new Set(modalities)] : ["text"];
 }

@@ -554,14 +554,24 @@ function AttemptDetailDrawer({
 export function IncidentLogTable({ incidents }: IncidentLogTableProps) {
   const [showFailuresOnly, setShowFailuresOnly] = useState(false);
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
+  const [modalityFilter, setModalityFilter] = useState<string | null>(null);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    setModalityFilter(searchParams.get("modality"));
+  }, []);
 
   const visibleIncidents = useMemo(() => {
+    const modalityFilteredIncidents = modalityFilter
+      ? incidents.filter((incident) => incident.modality === modalityFilter)
+      : incidents;
+
     if (!showFailuresOnly) {
-      return incidents;
+      return modalityFilteredIncidents;
     }
 
-    return incidents.filter((incident) => incident.outcomeFlag === "FAILED");
-  }, [incidents, showFailuresOnly]);
+    return modalityFilteredIncidents.filter((incident) => incident.outcomeFlag === "FAILED");
+  }, [incidents, modalityFilter, showFailuresOnly]);
 
   const activeIncident = useMemo(
     () => incidents.find((incident) => incident.id === selectedAttemptId) ?? null,
@@ -587,6 +597,12 @@ export function IncidentLogTable({ incidents }: IncidentLogTableProps) {
           <span className="font-semibold text-white">{visibleIncidents.length}</span>{" "}
           of <span className="font-semibold text-white">{incidents.length}</span>{" "}
           attempts
+          {modalityFilter ? (
+            <>
+              {" "}
+              for <span className="font-semibold text-white">{modalityFilter}</span>
+            </>
+          ) : null}
         </p>
 
         <label className="inline-flex w-fit cursor-pointer items-center gap-3 font-mono text-sm font-medium text-neutral-300">

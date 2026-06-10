@@ -15,6 +15,18 @@ type CoverageResponse = {
   error?: string;
 };
 
+type Modality = "text" | "tool_call" | "vision" | "rag" | "voice";
+
+type ModalityCoverageGroup = {
+  modality: Modality;
+  count: number;
+};
+
+type ModalityCoverageResponse = {
+  groups?: ModalityCoverageGroup[];
+  error?: string;
+};
+
 const OWASP_ROWS = [
   { id: "LLM01", label: "Prompt Injection" },
   { id: "LLM02", label: "Insecure Output Handling" },
@@ -35,6 +47,14 @@ const SEVERITIES: { id: Severity; label: string }[] = [
   { id: "low", label: "Low" }
 ];
 
+const MODALITIES: { id: Modality; label: string }[] = [
+  { id: "text", label: "Text" },
+  { id: "tool_call", label: "Tool call" },
+  { id: "vision", label: "Vision" },
+  { id: "rag", label: "RAG" },
+  { id: "voice", label: "Voice" }
+];
+
 function cellTone(count: number) {
   if (count === 0) {
     return "border-red-900/70 bg-red-950/20 text-red-300";
@@ -49,6 +69,7 @@ function cellTone(count: number) {
 
 export function CoverageMatrix() {
   const [groups, setGroups] = useState<CoverageGroup[]>([]);
+  const [modalityGroups, setModalityGroups] = useState<ModalityCoverageGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,16 +81,27 @@ export function CoverageMatrix() {
       setError(null);
 
       try {
-        const response = await fetch("/api/mesh-payloads?group_by=owasp,severity", {
-          signal: controller.signal
-        });
-        const payload = (await response.json()) as CoverageResponse;
+        const [coverageResponse, modalityResponse] = await Promise.all([
+          fetch("/api/mesh-payloads?group_by=owasp,severity", {
+            signal: controller.signal
+          }),
+          fetch("/api/coverage/modality", {
+            signal: controller.signal
+          })
+        ]);
+        const payload = (await coverageResponse.json()) as CoverageResponse;
+        const modalityPayload = (await modalityResponse.json()) as ModalityCoverageResponse;
 
-        if (!response.ok || payload.error) {
+        if (!coverageResponse.ok || payload.error) {
           throw new Error(payload.error ?? "Coverage request failed.");
         }
 
+        if (!modalityResponse.ok || modalityPayload.error) {
+          throw new Error(modalityPayload.error ?? "Modality coverage request failed.");
+        }
+
         setGroups(payload.groups ?? []);
+        setModalityGroups(modalityPayload.groups ?? []);
       } catch (err) {
         if (controller.signal.aborted) {
           return;
@@ -97,6 +129,29 @@ export function CoverageMatrix() {
 
     return map;
   }, [groups]);
+
+  const modalityCounts = useMemo(() => {
+    const map = new Map<Modality, number>();
+
+    for (const modality of MODALITIES) {
+      map.set(modality.id, 0);
+    }
+
+    for (const group of modalityGroups) {
+      map.set(group.modality, group.count);
+    }
+
+    return map;
+  }, [modalityGroups]);
+
+  const maxModalityCount = useMemo(
+    () => Math.max(1, ...MODALITIES.map((modality) => modalityCounts.get(modality.id) ?? 0)),
+    [modalityCounts]
+  );
+
+  function navigateToModality(modality: Modality) {
+    window.location.href = `/dashboard?modality=${encodeURIComponent(modality)}#incident-log`;
+  }
 
   return (
     <section className="rounded-md border border-neutral-800 bg-neutral-950">
@@ -167,6 +222,94 @@ export function CoverageMatrix() {
               ))}
             </tbody>
           </table>
+
+          <div className="mt-6 border-t border-neutral-800 pt-5">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="font-mono text-xs font-bold uppercase tracking-[0.18em] text-neutral-500">
+                  Coverage by modality
+                </p>
+                <h3 className="mt-2 text-xl font-black tracking-tight text-white">
+                  Payload Surface Distribution
+                </h3>
+              </div>
+              <p className="font-mono text-xs uppercase text-neutral-600">
+                Click bar to inspect incidents
+              </p>
+            </div>
+
+            <svg
+              aria-label="Coverage by modality bar chart"
+              className="mt-4 h-72 w-full min-w-[42rem]"
+              role="img"
+              viewBox="0 0 760 270"
+            >
+              <rect fill="#000000" height="270" width="760" x="0" y="0" />
+              {MODALITIES.map((modality, index) => {
+                const count = modalityCounts.get(modality.id) ?? 0;
+                const y = 28 + index * 46;
+                const width = count === 0 ? 18 : Math.max(28, (count / maxModalityCount) * 430);
+                const fill = count === 0 ? "#dc2626" : "#ffffff";
+                const opacity = count === 0 ? 0.4 : 1;
+
+                return (
+                  <g
+                    aria-label={`${modality.label}: ${count} payloads`}
+                    className="cursor-pointer outline-none"
+                    key={modality.id}
+                    onClick={() => navigateToModality(modality.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        navigateToModality(modality.id);
+                      }
+                    }}
+                    role="link"
+                    tabIndex={0}
+                  >
+                    <text
+                      fill="#a3a3a3"
+                      fontFamily="monospace"
+                      fontSize="13"
+                      fontWeight="700"
+                      x="18"
+                      y={y + 20}
+                    >
+                      {modality.label.toUpperCase()}
+                    </text>
+                    <rect
+                      fill={fill}
+                      height="24"
+                      opacity={opacity}
+                      width={width}
+                      x="150"
+                      y={y}
+                    />
+                    <rect
+                      fill="none"
+                      height="24"
+                      opacity="0.55"
+                      stroke="#ffffff"
+                      strokeWidth="1"
+                      width="430"
+                      x="150"
+                      y={y}
+                    />
+                    <text
+                      fill={count === 0 ? "#fca5a5" : "#ffffff"}
+                      fontFamily="monospace"
+                      fontSize="13"
+                      fontWeight="800"
+                      x="604"
+                      y={y + 18}
+                    >
+                      {isLoading ? "..." : `${count} payloads`}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
         </div>
       )}
     </section>

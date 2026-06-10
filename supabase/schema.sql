@@ -8,6 +8,7 @@ create table adversarial_prompts (
   prompt_text text not null,
   expected_outcome expected_outcome not null,
   category text not null,
+  modality varchar(20) default 'text',
   source_dataset text not null default 'local-seed',
   created_at timestamptz not null default now()
 );
@@ -46,7 +47,21 @@ create table redteam_results (
   final_output text,
   blocked boolean not null default false,
   outcome_flag outcome_flag not null,
+  modality varchar(20) default 'text'
+    check (modality in ('text','tool_call','vision','rag','voice')),
   created_at timestamptz not null default now()
+);
+
+create table agentic_tool_sequences (
+  id serial primary key,
+  name varchar(200) not null,
+  description text,
+  tool_calls jsonb not null,
+  expected_outcome varchar(20) default 'blocked',
+  mitre_ttp varchar(30),
+  owasp_llm varchar(10),
+  severity varchar(10) default 'high',
+  created_at timestamptz default now()
 );
 
 create index redteam_results_run_id_idx on redteam_results(run_id);

@@ -25,6 +25,7 @@ export async function GET() {
           jailbreak_rate: entry.avgJailbreakRate,
           fp_rate: entry.avgFpRate,
           safety_sharpe: entry.avgSafetySharpe,
+          modalities_covered: entry.modalitiesCovered,
           certificate_hash: entry.certificateHash ?? "",
           evaluated_at: new Date(entry.latestRun).toISOString()
         }))

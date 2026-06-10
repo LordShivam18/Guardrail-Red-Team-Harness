@@ -24,6 +24,7 @@ type ResultRow = {
   created_at: string;
   category: string | null;
   prompt_text: string | null;
+  modality: string | null;
 };
 
 export type ComplianceTone = "amber" | "rose" | "violet" | "cyan" | "slate";
@@ -57,6 +58,7 @@ export type IncidentLogRow = {
   rawOutput: string;
   finalOutput: string;
   blocked: boolean;
+  modality: string;
   createdAt: string;
   modelVersion: string;
   processingLatencyMs: number;
@@ -218,6 +220,7 @@ export async function getLatestRunIncidents(): Promise<IncidentLogData | null> {
       r.blocked,
       r.outcome_flag,
       r.created_at,
+      coalesce(nullif(r.modality, ''), nullif(p.modality, ''), 'text') as modality,
       p.category,
       p.prompt_text
     from redteam_results r
@@ -234,6 +237,7 @@ export async function getLatestRunIncidents(): Promise<IncidentLogData | null> {
     rawOutput: row.raw_output ?? "No raw output captured.",
     finalOutput: row.final_output ?? row.raw_output ?? "No output captured.",
     blocked: row.blocked,
+    modality: row.modality ?? "text",
     createdAt: row.created_at,
     modelVersion: latestRun.model_version,
     processingLatencyMs: getProcessingLatencySignature(row),

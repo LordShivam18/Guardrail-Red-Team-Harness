@@ -8,6 +8,7 @@ type ParetoRunRow = {
   jailbreak_rate: number;
   fp_rate: number;
   safety_sharpe: number;
+  modalities_covered: string[] | null;
 };
 
 type DiagnosticsRunRow = {
@@ -138,7 +139,18 @@ export async function getParetoFrontierRows(limit: number = 50): Promise<ParetoD
         model_version,
         jailbreak_rate,
         fp_rate,
-        coalesce(safety_sharpe, 0) as safety_sharpe
+        coalesce(safety_sharpe, 0) as safety_sharpe,
+        coalesce(
+          (
+            select array_remove(
+              array_agg(distinct coalesce(nullif(results.modality, ''), 'text')),
+              null
+            )
+            from redteam_results results
+            where results.run_id = redteam_runs.id
+          ),
+          array['text']::text[]
+        ) as modalities_covered
       from redteam_runs
       order by timestamp desc
       limit ${safeLimit}
@@ -157,8 +169,21 @@ export async function getParetoFrontierRows(limit: number = 50): Promise<ParetoD
     safetySharpe: row.safety_sharpe,
     safetyScore: clampScore((1 - row.jailbreak_rate) * 100),
     utilityScore: clampScore((Math.max(0, row.safety_sharpe) / maxSharpe) * 100),
-    meshScore: calculateMeshScore(row.jailbreak_rate, row.fp_rate, row.safety_sharpe)
+    meshScore: calculateMeshScore(
+      row.jailbreak_rate,
+      row.fp_rate,
+      row.safety_sharpe,
+      normalizeModalities(row.modalities_covered)
+    )
   }));
+}
+
+function normalizeModalities(values: string[] | null | undefined) {
+  const modalities = (values ?? [])
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  return modalities.length > 0 ? [...new Set(modalities)] : ["text"];
 }
 
 export async function getWhiteboxDiagnosticsData(): Promise<WhiteboxDiagnosticsData | null> {

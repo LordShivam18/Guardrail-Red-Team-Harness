@@ -27,7 +27,10 @@ export async function IncidentLog() {
     }
 
     return (
-      <section className="overflow-hidden rounded-md border border-neutral-800 bg-neutral-950">
+      <section
+        className="overflow-hidden rounded-md border border-neutral-800 bg-neutral-950"
+        id="incident-log"
+      >
         <div className="flex flex-col gap-2 px-5 py-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-neutral-500">
