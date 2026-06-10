@@ -20,12 +20,15 @@
     "seed:mesh": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seed-mesh-dataset.ts\"",
     "seed:history": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seedHistoricalRuns.ts\"",
     "export:dataset": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/export-mesh-dataset.ts\"",
+    "migration:003": "tsx scripts/run-migration-003.ts",
     "db:migrate:003": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/migrate-003.ts\"",
     "db:migrate:004": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/migrate-004.ts\"",
     "seed:agentic": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seedAgenticPayloads.ts\"",
     "seed:vision": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seedVisionPayloads.ts\"",
     "seed:rag": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seedRagPayloads.ts\"",
-    "seed:voice": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seedVoicePayloads.ts\""
+    "seed:voice": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seedVoicePayloads.ts\"",
+    "compliance:generate": "tsx scripts/generate-compliance.ts",
+    "compliance:anchor": "tsx scripts/anchor-compliance.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -34,6 +37,7 @@
     "@tensorflow/tfjs": "^4.22.0",
     "bullmq": "^5.77.1",
     "encoding": "^0.1.13",
+    "ethers": "^6.16.0",
     "ioredis": "^5.10.1",
     "jspdf": "^4.2.1",
     "next": "^14.2.13",

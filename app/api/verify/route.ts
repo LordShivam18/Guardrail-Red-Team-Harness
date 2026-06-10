@@ -11,6 +11,8 @@ type VerifiedRunRow = {
   jailbreak_rate: number;
   fp_rate: number;
   certificate_hash: string;
+  onchain_tx_hash: string | null;
+  onchain_network: string | null;
 };
 
 function isLikelySha256(value: string) {
@@ -35,7 +37,9 @@ export async function GET(request: Request) {
         model_version,
         jailbreak_rate,
         fp_rate,
-        certificate_hash
+        certificate_hash,
+        nullif(to_jsonb(redteam_runs)->>'onchain_tx_hash', '') as onchain_tx_hash,
+        nullif(to_jsonb(redteam_runs)->>'onchain_network', '') as onchain_network
       from redteam_runs
       where certificate_hash = ${certificateHash}
       limit 1
@@ -56,7 +60,9 @@ export async function GET(request: Request) {
         modelVersion: run.model_version,
         jailbreakRate: run.jailbreak_rate,
         falsePositiveRate: run.fp_rate,
-        certificateHash: run.certificate_hash
+        certificateHash: run.certificate_hash,
+        onchainTxHash: run.onchain_tx_hash,
+        onchainNetwork: run.onchain_network
       }
     });
   } catch (error) {

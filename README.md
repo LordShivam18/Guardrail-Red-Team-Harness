@@ -83,6 +83,8 @@ Required environment variables:
 ```bash
 DATABASE_URL=postgresql://user:password@your-neon-host.neon.tech/dbname?sslmode=require
 GEMINI_API_KEY=your-gemini-api-key
+ONCHAIN_PRIVATE_KEY=   # hex private key for Polygon Amoy anchoring; omit for simulation mode
+ONCHAIN_RPC_URL=       # optional override; defaults to https://rpc-amoy.polygon.technology
 ```
 
 ## Scripts
@@ -91,6 +93,9 @@ GEMINI_API_KEY=your-gemini-api-key
 npm run seed:prompts
 npm run redteam:run
 npm run cleanup:data
+npm run migration:003
+npm run compliance:generate
+npm run compliance:anchor
 ```
 
 `cleanup:data` deletes `redteam_runs` and `redteam_results` records older than 30 days to help keep storage usage inside Neon's free-tier limits.

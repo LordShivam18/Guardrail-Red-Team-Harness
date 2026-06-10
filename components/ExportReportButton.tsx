@@ -30,6 +30,22 @@ type ReportPayload = {
   }[];
 };
 
+type EvidencePack = {
+  frameworks: {
+    name: string;
+    version: string;
+    overallStatus: string;
+    passCount: number;
+    controls: {
+      controlId: string;
+      status: string;
+      observedValue: number | null;
+      threshold: number;
+      operator: string;
+    }[];
+  }[];
+};
+
 const REPORT_ENDPOINT = "/api/reports/executive-compliance";
 
 function formatTimestamp(value: string) {
@@ -68,6 +84,18 @@ function toAsciiHex(value: string) {
     .toUpperCase();
 }
 
+function formatEvidenceNumber(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) {
+    return "N/A";
+  }
+
+  if (Math.abs(value) >= 100) {
+    return value.toFixed(0);
+  }
+
+  return value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+}
+
 async function loadReportPayload() {
   const response = await fetch(REPORT_ENDPOINT, {
     method: "GET",
@@ -85,7 +113,30 @@ async function loadReportPayload() {
   return payload as ReportPayload;
 }
 
-async function buildExecutiveCompliancePdf(payload: ReportPayload) {
+async function loadEvidencePack(runId: string) {
+  const response = await fetch(
+    `/api/compliance/evidence?runId=${encodeURIComponent(runId)}`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json"
+      },
+      cache: "no-store"
+    }
+  );
+
+  if (!response.ok) {
+    console.warn("[report-export] Regulatory mapping evidence was unavailable.");
+    return null;
+  }
+
+  return (await response.json()) as EvidencePack;
+}
+
+async function buildExecutiveCompliancePdf(
+  payload: ReportPayload,
+  evidencePack: EvidencePack | null
+) {
   const { default: jsPDF } = await import("jspdf");
   const doc = new jsPDF({
     format: "a4",
@@ -121,6 +172,17 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
     cursorY += 10;
     drawDivider(cursorY);
     cursorY += 22;
+  };
+
+  const addContentPage = () => {
+    doc.addPage();
+    cursorY = 44;
+  };
+
+  const ensureSpace = (height: number) => {
+    if (cursorY + height > pageHeight - 94) {
+      addContentPage();
+    }
   };
 
   const drawLabelValue = (label: string, value: string) => {
@@ -175,6 +237,89 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
     doc.text(sanitizePdfText(footerText), pageWidth / 2, pageHeight - 18, {
       align: "center"
     });
+  };
+
+  const drawRegulatoryMapping = () => {
+    addContentPage();
+    drawSectionTitle("Regulatory Mapping");
+
+    if (!evidencePack || evidencePack.frameworks.length === 0) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(71, 85, 105);
+      doc.text(
+        sanitizePdfText("Regulatory evidence was not available for this run."),
+        marginX,
+        cursorY
+      );
+      cursorY += 24;
+      return;
+    }
+
+    const controlX = marginX;
+    const statusX = marginX + 130;
+    const observedX = marginX + 232;
+    const thresholdX = marginX + 342;
+
+    for (const framework of evidencePack.frameworks) {
+      ensureSpace(86);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(15, 23, 42);
+      doc.text(
+        sanitizePdfText(`${framework.name} v${framework.version} - ${framework.overallStatus}`),
+        marginX,
+        cursorY
+      );
+      cursorY += 18;
+
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.rect(marginX, cursorY - 10, contentWidth, 24, "FD");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+      doc.text(sanitizePdfText("CONTROL ID"), controlX + 8, cursorY + 5);
+      doc.text(sanitizePdfText("STATUS"), statusX, cursorY + 5);
+      doc.text(sanitizePdfText("OBSERVED"), observedX, cursorY + 5);
+      doc.text(sanitizePdfText("THRESHOLD"), thresholdX, cursorY + 5);
+      cursorY += 26;
+
+      for (const control of framework.controls) {
+        ensureSpace(24);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(15, 23, 42);
+        doc.text(sanitizePdfText(control.controlId), controlX + 8, cursorY, {
+          maxWidth: 104
+        });
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(control.status === "FAIL" ? 185 : 15, 23, 42);
+        doc.text(sanitizePdfText(control.status), statusX, cursorY, {
+          maxWidth: 88
+        });
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(15, 23, 42);
+        doc.text(sanitizePdfText(formatEvidenceNumber(control.observedValue)), observedX, cursorY);
+        doc.text(
+          sanitizePdfText(`${control.operator} ${formatEvidenceNumber(control.threshold)}`),
+          thresholdX,
+          cursorY,
+          { maxWidth: pageWidth - thresholdX - marginX }
+        );
+        cursorY += 18;
+      }
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(71, 85, 105);
+      doc.text(
+        sanitizePdfText(`${framework.passCount} of ${framework.controls.length} controls passed.`),
+        marginX,
+        cursorY
+      );
+      cursorY += 30;
+    }
   };
 
   const matrix = payload.confusionMatrix;
@@ -354,6 +499,7 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
     .splitTextToSize(sanitizePdfText(attestation), contentWidth)
     .map((line: string) => sanitizePdfText(line));
   doc.text(wrappedAttestation, marginX, cursorY);
+  cursorY += wrappedAttestation.length * 13 + 12;
 
   doc.setFillColor(6, 78, 59);
   doc.roundedRect(marginX, pageHeight - 76, contentWidth, 34, 8, 8, "F");
@@ -369,6 +515,8 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
     }
   );
   drawFooter();
+  drawRegulatoryMapping();
+  drawFooter();
 
   doc.save(`guardrail-compliance-${modelFileName}.pdf`);
 }
@@ -383,7 +531,8 @@ export function ExportReportButton() {
 
     try {
       const payload = await loadReportPayload();
-      await buildExecutiveCompliancePdf(payload);
+      const evidencePack = await loadEvidencePack(payload.run.id);
+      await buildExecutiveCompliancePdf(payload, evidencePack);
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Unable to export compliance report."

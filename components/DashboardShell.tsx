@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { ComplianceEvidence } from "@/components/ComplianceEvidence";
 import { CoverageMatrix } from "@/components/CoverageMatrix";
 import { ExportReportButton } from "@/components/ExportReportButton";
 import { FuzzerPanel } from "@/components/FuzzerPanel";
@@ -54,7 +55,10 @@ function ToolPanelSkeleton() {
   );
 }
 
-export function DashboardShell() {
+export async function DashboardShell() {
+  const latestRun = await getLatestRunSummary();
+  const latestRunId = latestRun?.runId;
+
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="mx-auto flex w-full max-w-7xl flex-col gap-7 px-5 py-8 sm:px-6 lg:px-8">
@@ -109,6 +113,8 @@ export function DashboardShell() {
           }
           coverageSlot={<CoverageMatrix />}
         />
+
+        {latestRunId ? <ComplianceEvidence runId={latestRunId} /> : null}
 
         <Suspense fallback={<SummarySkeleton />}>
           <RunSummary />
