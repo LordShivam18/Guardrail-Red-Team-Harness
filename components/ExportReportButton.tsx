@@ -47,6 +47,27 @@ function sanitizeFileFragment(value: string) {
   return value.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase();
 }
 
+function sanitizePdfText(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[^\x20-\x7E]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function toAsciiHex(value: string) {
+  const trimmed = value.trim();
+
+  if (/^[a-f0-9]+$/i.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+
+  return Array.from(new TextEncoder().encode(trimmed))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+}
+
 async function loadReportPayload() {
   const response = await fetch(REPORT_ENDPOINT, {
     method: "GET",
@@ -71,6 +92,7 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
     orientation: "portrait",
     unit: "pt"
   });
+  doc.setFont("helvetica", "normal");
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -95,7 +117,7 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
     doc.setTextColor(15, 23, 42);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
-    doc.text(title.toUpperCase(), marginX, cursorY);
+    doc.text(sanitizePdfText(title).toUpperCase(), marginX, cursorY);
     cursorY += 10;
     drawDivider(cursorY);
     cursorY += 22;
@@ -105,10 +127,10 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(71, 85, 105);
-    doc.text(label.toUpperCase(), labelX, cursorY);
+    doc.text(sanitizePdfText(label).toUpperCase(), labelX, cursorY);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(15, 23, 42);
-    doc.text(value, valueX, cursorY, {
+    doc.text(sanitizePdfText(value), valueX, cursorY, {
       maxWidth: pageWidth - valueX - marginX
     });
     cursorY += rowGap;
@@ -128,27 +150,30 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(100, 116, 139);
-    doc.text(title.toUpperCase(), x + 14, y + 22);
+    doc.text(sanitizePdfText(title).toUpperCase(), x + 14, y + 22);
     doc.setFontSize(20);
     doc.setTextColor(15, 23, 42);
-    doc.text(value, x + 14, y + 49, {
+    doc.text(sanitizePdfText(value), x + 14, y + 49, {
       maxWidth: width - 28
     });
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(71, 85, 105);
-    doc.text(detail, x + 14, y + 68, {
+    doc.text(sanitizePdfText(detail), x + 14, y + 68, {
       maxWidth: width - 28
     });
   };
 
   const matrix = payload.confusionMatrix;
   const modelFileName = sanitizeFileFragment(payload.run.modelVersion || "model");
+  const safeCertificateHash = payload.certificateHash
+    ? toAsciiHex(payload.certificateHash)
+    : null;
 
   doc.setProperties({
-    title: "AI Alignment & Vulnerability Audit Report",
-    subject: "Executive compliance export",
-    author: "Guardrail Automation Mesh"
+    title: sanitizePdfText("AI Alignment & Vulnerability Audit Report"),
+    subject: sanitizePdfText("Executive compliance export"),
+    author: sanitizePdfText("Guardrail Automation Mesh")
   });
 
   doc.setFillColor(2, 6, 23);
@@ -156,14 +181,20 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
   doc.setTextColor(241, 245, 249);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(20);
-  doc.text("AI Alignment & Vulnerability Audit Report", marginX, cursorY);
+  doc.text(sanitizePdfText("AI Alignment & Vulnerability Audit Report"), marginX, cursorY);
   cursorY += 26;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(203, 213, 225);
-  doc.text("Executive security alignment certificate generated from live dashboard telemetry.", marginX, cursorY);
+  doc.text(
+    sanitizePdfText(
+      "Executive security alignment certificate generated from live dashboard telemetry."
+    ),
+    marginX,
+    cursorY
+  );
   cursorY += 20;
-  doc.text(`Generated: ${formatTimestamp(payload.generatedAt)}`, marginX, cursorY);
+  doc.text(sanitizePdfText(`Generated: ${formatTimestamp(payload.generatedAt)}`), marginX, cursorY);
 
   cursorY = 152;
   drawSectionTitle("Runtime Certificate Context");
@@ -173,8 +204,8 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
   drawLabelValue("Pipeline Heartbeat", payload.pipelineHeartbeatStatus);
   drawLabelValue(
     "Cryptographic Hash",
-    payload.certificateHash
-      ? `\uD83D\uDD12 ${payload.certificateHash}`
+    safeCertificateHash
+      ? `HASH ${safeCertificateHash}`
       : "Not available"
   );
 
@@ -222,7 +253,7 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
     marginX + advancedCardWidth + cardGap,
     cursorY,
     advancedCardWidth,
-    "Compute Exhaustion (\u0394C)",
+    "Compute Exhaustion (Delta C)",
     payload.metrics.maxComputeShift != null
       ? payload.metrics.maxComputeShift.toFixed(3)
       : "N/A",
@@ -272,7 +303,11 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.setTextColor(71, 85, 105);
-    doc.text("No OWASP-mapped incidents were recorded for this run.", marginX, cursorY);
+    doc.text(
+      sanitizePdfText("No OWASP-mapped incidents were recorded for this run."),
+      marginX,
+      cursorY
+    );
     cursorY += 24;
   } else {
     for (const match of payload.owaspRuleMatches) {
@@ -282,11 +317,11 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
       doc.setTextColor(15, 23, 42);
-      doc.text(match.rule, ruleX, cursorY + 4, {
+      doc.text(sanitizePdfText(match.rule), ruleX, cursorY + 4, {
         maxWidth: contentWidth - 92
       });
       doc.setFont("helvetica", "bold");
-      doc.text(match.count.toLocaleString(), ruleCountX, cursorY + 4, {
+      doc.text(sanitizePdfText(match.count.toLocaleString()), ruleCountX, cursorY + 4, {
         align: "right"
       });
       cursorY += 38;
@@ -302,7 +337,9 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(51, 65, 85);
-  const wrappedAttestation = doc.splitTextToSize(attestation, contentWidth);
+  const wrappedAttestation = doc
+    .splitTextToSize(sanitizePdfText(attestation), contentWidth)
+    .map((line: string) => sanitizePdfText(line));
   doc.text(wrappedAttestation, marginX, cursorY);
 
   doc.setFillColor(6, 78, 59);
@@ -310,9 +347,14 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
   doc.setTextColor(236, 253, 245);
-  doc.text("Certified by Guardrail Automation Mesh.", pageWidth / 2, pageHeight - 54, {
-    align: "center"
-  });
+  doc.text(
+    sanitizePdfText("Certified by Guardrail Automation Mesh."),
+    pageWidth / 2,
+    pageHeight - 54,
+    {
+      align: "center"
+    }
+  );
 
   doc.save(`guardrail-compliance-${modelFileName}.pdf`);
 }

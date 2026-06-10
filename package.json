@@ -17,7 +17,8 @@
     "secops:scan": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/scanSecrets.ts\"",
     "test:proxy": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/testProxy.ts\"",
     "ci:mesh-gate": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/ci-runner.ts\"",
-    "seed:mesh": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seed-mesh-dataset.ts\""
+    "seed:mesh": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seed-mesh-dataset.ts\"",
+    "seed:history": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seedHistoricalRuns.ts\""
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

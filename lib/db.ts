@@ -138,7 +138,17 @@ export async function getHistoricalRunSummary(
 
 export async function getModelComparisonSummary(): Promise<ModelComparisonSummary[]> {
   const rows = (await sql`
-    with result_metrics as (
+    with run_metrics as (
+      select
+        model_version as model_name,
+        count(*)::int as run_count,
+        round(((1 - avg(jailbreak_rate)) * 100)::numeric, 2)::double precision
+          as run_defusal_success_rate,
+        round(avg(fp_rate)::numeric, 4)::double precision as avg_fp_rate
+      from redteam_runs
+      group by model_version
+    ),
+    result_metrics as (
       select
         runs.model_version as model_name,
         results.outcome_flag::text as outcome_flag,
@@ -167,35 +177,64 @@ export async function getModelComparisonSummary(): Promise<ModelComparisonSummar
           else null
         end as latency_ms
       from result_metrics
+    ),
+    result_aggregates as (
+      select
+        model_name,
+        count(*)::int as total_interactions,
+        count(*) filter (where category != 'safe')::int as total_attack_interactions,
+        count(*) filter (
+          where category != 'safe'
+            and outcome_flag = 'PASSED'
+        )::int as blocked_attempts,
+        case
+          when count(*) filter (where category != 'safe') = 0 then null
+          else round(
+            (
+              (
+                count(*) filter (
+                  where category != 'safe'
+                    and outcome_flag = 'PASSED'
+                )
+              )::double precision
+              / nullif((count(*) filter (where category != 'safe'))::double precision, 0)
+              * 100
+            )::numeric,
+            2
+          )::double precision
+        end as defusal_success_rate,
+        round(avg(latency_ms)::numeric, 2)::double precision as average_latency_ms,
+        count(*) filter (where outcome_flag = 'FP')::int as false_positive_count
+      from normalized_metrics
+      group by model_name
     )
     select
-      model_name,
-      count(*)::int as total_interactions,
-      count(*) filter (where category != 'safe')::int as total_attack_interactions,
-      count(*) filter (
-        where category != 'safe'
-          and outcome_flag = 'PASSED'
+      run_metrics.model_name,
+      coalesce(result_aggregates.total_interactions, run_metrics.run_count)::int
+        as total_interactions,
+      coalesce(
+        nullif(result_aggregates.total_attack_interactions, 0),
+        run_metrics.run_count
+      )::int as total_attack_interactions,
+      coalesce(
+        result_aggregates.blocked_attempts,
+        round(
+          ((run_metrics.run_defusal_success_rate / 100) * run_metrics.run_count)::numeric,
+          0
+        )::int
       )::int as blocked_attempts,
-      case
-        when count(*) filter (where category != 'safe') = 0 then 0
-        else round(
-          (
-            (
-              count(*) filter (
-                where category != 'safe'
-                  and outcome_flag = 'PASSED'
-              )
-            )::double precision
-            / nullif((count(*) filter (where category != 'safe'))::double precision, 0)
-            * 100
-          )::numeric,
-          2
-        )::double precision
-      end as defusal_success_rate,
-      round(avg(latency_ms)::numeric, 2)::double precision as average_latency_ms,
-      count(*) filter (where outcome_flag = 'FP')::int as false_positive_count
-    from normalized_metrics
-    group by model_name
+      coalesce(
+        result_aggregates.defusal_success_rate,
+        run_metrics.run_defusal_success_rate
+      )::double precision as defusal_success_rate,
+      result_aggregates.average_latency_ms,
+      coalesce(
+        result_aggregates.false_positive_count,
+        round((run_metrics.avg_fp_rate * run_metrics.run_count)::numeric, 0)::int
+      )::int as false_positive_count
+    from run_metrics
+    left join result_aggregates
+      on result_aggregates.model_name = run_metrics.model_name
     order by
       defusal_success_rate desc,
       average_latency_ms asc nulls last,

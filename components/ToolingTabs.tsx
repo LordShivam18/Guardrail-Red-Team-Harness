@@ -2,20 +2,37 @@
 
 import { type ReactNode, useState } from "react";
 
-type Tab = "sandbox" | "fuzzer";
+type Tab = "sandbox" | "fuzzer" | "pareto" | "whitebox";
 
 type ToolingTabsProps = {
   sandboxSlot: ReactNode;
   fuzzerSlot: ReactNode;
+  paretoSlot: ReactNode;
+  whiteboxSlot: ReactNode;
 };
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "sandbox", label: "Sandbox" },
-  { id: "fuzzer", label: "Auto-Fuzzer" }
+  { id: "sandbox", label: "SANDBOX" },
+  { id: "fuzzer", label: "AUTO-FUZZER" },
+  { id: "pareto", label: "PARETO FRONTIER" },
+  { id: "whitebox", label: "WHITEBOX" }
 ];
 
-export function ToolingTabs({ sandboxSlot, fuzzerSlot }: ToolingTabsProps) {
+export function ToolingTabs({
+  fuzzerSlot,
+  paretoSlot,
+  sandboxSlot,
+  whiteboxSlot
+}: ToolingTabsProps) {
   const [activeTab, setActiveTab] = useState<Tab>("sandbox");
+  const activeSlot =
+    activeTab === "sandbox"
+      ? sandboxSlot
+      : activeTab === "fuzzer"
+        ? fuzzerSlot
+        : activeTab === "pareto"
+          ? paretoSlot
+          : whiteboxSlot;
 
   return (
     <div>
@@ -39,7 +56,7 @@ export function ToolingTabs({ sandboxSlot, fuzzerSlot }: ToolingTabsProps) {
 
       {/* Tab content */}
       <div className="mt-4">
-        {activeTab === "sandbox" ? sandboxSlot : fuzzerSlot}
+        {activeSlot}
       </div>
     </div>
   );

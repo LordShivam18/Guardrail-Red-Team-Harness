@@ -4,9 +4,11 @@ import { FuzzerPanel } from "@/components/FuzzerPanel";
 import { HistoricalTrend } from "@/components/HistoricalTrend";
 import { IncidentLog } from "@/components/IncidentLog";
 import { InteractiveSandbox } from "@/components/InteractiveSandbox";
+import { ParetoFrontier } from "@/components/ParetoFrontier";
 import { RefreshButton } from "@/components/RefreshButton";
 import { RunSummary } from "@/components/RunSummary";
 import { ToolingTabs } from "@/components/ToolingTabs";
+import { WhiteboxDiagnostics } from "@/components/WhiteboxDiagnostics";
 import { getLatestRunSummary } from "@/lib/redteamDashboard";
 
 async function CertificateBadge() {
@@ -14,7 +16,7 @@ async function CertificateBadge() {
   if (!summary || !summary.certificateHash) return null;
   return (
     <span className="inline-flex w-fit items-center gap-2 rounded-none border border-neutral-700 bg-neutral-900 px-3 py-1 font-mono text-xs uppercase text-neutral-300">
-      🔒 VERIFIED ({summary.certificateHash.slice(0, 8)})
+      VERIFIED ({summary.certificateHash.slice(0, 8)})
     </span>
   );
 }
@@ -88,6 +90,8 @@ export function DashboardShell() {
         <ToolingTabs
           sandboxSlot={<InteractiveSandbox />}
           fuzzerSlot={<FuzzerPanel />}
+          paretoSlot={<ParetoFrontier />}
+          whiteboxSlot={<WhiteboxDiagnostics />}
         />
 
         <Suspense fallback={<SummarySkeleton />}>
