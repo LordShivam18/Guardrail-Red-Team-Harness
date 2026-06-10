@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CitationFooter } from "@/components/CitationFooter";
 import { ModelLatencyBarChart } from "@/components/ModelLatencyBarChart";
 import { getModelComparisonSummary } from "@/lib/db";
 import type { ModelComparisonSummary } from "@/lib/db";
@@ -301,6 +302,8 @@ export default async function LeaderboardPage() {
             </section>
           </>
         )}
+
+        <CitationFooter />
       </section>
     </main>
   );

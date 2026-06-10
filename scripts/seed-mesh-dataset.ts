@@ -8,8 +8,10 @@
  *   npx tsx scripts/seed-mesh-dataset.ts
  */
 
-import "dotenv/config";
 import { neon } from "@neondatabase/serverless";
+import { loadLocalEnv } from "./env";
+
+loadLocalEnv();
 
 const DATABASE_URL = process.env.DATABASE_URL;
 

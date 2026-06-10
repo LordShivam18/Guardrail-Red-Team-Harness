@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { CoverageMatrix } from "@/components/CoverageMatrix";
 import { ExportReportButton } from "@/components/ExportReportButton";
 import { FuzzerPanel } from "@/components/FuzzerPanel";
 import { HistoricalTrend } from "@/components/HistoricalTrend";
@@ -106,6 +107,7 @@ export function DashboardShell() {
               <WhiteboxDiagnosticsPanel />
             </Suspense>
           }
+          coverageSlot={<CoverageMatrix />}
         />
 
         <Suspense fallback={<SummarySkeleton />}>

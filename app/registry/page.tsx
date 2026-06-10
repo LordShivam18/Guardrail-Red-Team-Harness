@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CitationFooter } from "@/components/CitationFooter";
 import { RegistrySearch } from "@/components/RegistrySearch";
 import { getRegistryLeaderboard } from "@/lib/meshRegistry";
 import type { RegistryEntry } from "@/lib/meshRegistry";
@@ -309,6 +310,8 @@ export default async function RegistryPage() {
             </div>
           </section>
         )}
+
+        <CitationFooter />
 
         {/* Footer */}
         <footer className="border-t border-neutral-800 pt-6 text-center">

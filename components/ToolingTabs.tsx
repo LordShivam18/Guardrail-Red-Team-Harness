@@ -2,23 +2,26 @@
 
 import { type ReactNode, useState } from "react";
 
-type Tab = "sandbox" | "fuzzer" | "pareto" | "whitebox";
+type Tab = "sandbox" | "fuzzer" | "pareto" | "whitebox" | "coverage";
 
 type ToolingTabsProps = {
   sandboxSlot: ReactNode;
   fuzzerSlot: ReactNode;
   paretoSlot: ReactNode;
   whiteboxSlot: ReactNode;
+  coverageSlot: ReactNode;
 };
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "sandbox", label: "SANDBOX" },
   { id: "fuzzer", label: "AUTO-FUZZER" },
   { id: "pareto", label: "PARETO FRONTIER" },
-  { id: "whitebox", label: "WHITEBOX" }
+  { id: "whitebox", label: "WHITEBOX" },
+  { id: "coverage", label: "COVERAGE" }
 ];
 
 export function ToolingTabs({
+  coverageSlot,
   fuzzerSlot,
   paretoSlot,
   sandboxSlot,
@@ -32,12 +35,14 @@ export function ToolingTabs({
         ? fuzzerSlot
         : activeTab === "pareto"
           ? paretoSlot
-          : whiteboxSlot;
+          : activeTab === "whitebox"
+            ? whiteboxSlot
+            : coverageSlot;
 
   return (
     <div>
       {/* Tab bar */}
-      <div className="flex gap-0 border-b border-neutral-800">
+      <div className="flex gap-0 overflow-x-auto border-b border-neutral-800">
         {TABS.map((tab) => (
           <button
             className={`px-5 py-3 font-mono text-xs font-bold uppercase tracking-wider transition ${

@@ -18,7 +18,9 @@
     "test:proxy": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/testProxy.ts\"",
     "ci:mesh-gate": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/ci-runner.ts\"",
     "seed:mesh": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seed-mesh-dataset.ts\"",
-    "seed:history": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seedHistoricalRuns.ts\""
+    "seed:history": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seedHistoricalRuns.ts\"",
+    "export:dataset": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/export-mesh-dataset.ts\"",
+    "db:migrate:003": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/migrate-003.ts\""
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
