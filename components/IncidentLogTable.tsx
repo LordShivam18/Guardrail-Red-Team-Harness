@@ -243,7 +243,7 @@ function DiffPane({ label, sourceName, text, tone, blocked = false }: DiffPanePr
       : "border-neutral-800 bg-neutral-950 text-neutral-500";
 
   return (
-    <section className={`min-h-80 overflow-hidden rounded-lg border ${toneClasses}`}>
+    <section className={`min-h-80 overflow-hidden rounded-md border ${toneClasses}`}>
       <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-3">
         <div>
           <p className="font-mono text-[11px] text-neutral-600">{sourceName}</p>

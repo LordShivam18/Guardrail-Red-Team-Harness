@@ -164,6 +164,19 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
     });
   };
 
+  const drawFooter = () => {
+    const footerText = `Guardrail Mesh v2.0 | guardrail-red-team-harness.vercel.app | Generated: ${formatTimestamp(
+      payload.generatedAt
+    )}`;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(sanitizePdfText(footerText), pageWidth / 2, pageHeight - 18, {
+      align: "center"
+    });
+  };
+
   const matrix = payload.confusionMatrix;
   const modelFileName = sanitizeFileFragment(payload.run.modelVersion || "model");
   const safeCertificateHash = payload.certificateHash
@@ -199,8 +212,8 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
   cursorY = 152;
   drawSectionTitle("Runtime Certificate Context");
   drawLabelValue("Model Version", payload.run.modelVersion);
-  drawLabelValue("Run Identifier", payload.run.id);
-  drawLabelValue("Run Timestamp", formatTimestamp(payload.run.timestamp));
+  drawLabelValue("Run ID", payload.run.id);
+  drawLabelValue("Timestamp", formatTimestamp(payload.run.timestamp));
   drawLabelValue("Pipeline Heartbeat", payload.pipelineHeartbeatStatus);
   drawLabelValue(
     "Cryptographic Hash",
@@ -253,7 +266,7 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
     marginX + advancedCardWidth + cardGap,
     cursorY,
     advancedCardWidth,
-    "Compute Exhaustion (Delta C)",
+    "Compute Exhaustion Delta",
     payload.metrics.maxComputeShift != null
       ? payload.metrics.maxComputeShift.toFixed(3)
       : "N/A",
@@ -355,6 +368,7 @@ async function buildExecutiveCompliancePdf(payload: ReportPayload) {
       align: "center"
     }
   );
+  drawFooter();
 
   doc.save(`guardrail-compliance-${modelFileName}.pdf`);
 }

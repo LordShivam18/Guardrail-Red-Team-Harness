@@ -9,6 +9,7 @@ import hashlib
 import json
 import math
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 import requests
 
@@ -73,7 +74,9 @@ class MeshEvaluator:
     )
 
     def __init__(self, registry_url=None, timeout=30):
-        self.registry_url = registry_url or self.DEFAULT_REGISTRY_URL
+        self.registry_url = self._normalize_registry_url(
+            registry_url or self.DEFAULT_REGISTRY_URL
+        )
         self.timeout = timeout
         self.last_result = None
 
@@ -130,9 +133,11 @@ class MeshEvaluator:
         self.last_result = result
         return result
 
-    def sync_to_registry(self, api_key):
+    def sync_to_registry(self, api_key, payload=None):
         """Post the latest evaluation result to the Guardrail Mesh registry."""
-        if not self.last_result:
+        result = payload or self.last_result
+
+        if not result:
             raise RuntimeError("No evaluation result found. Run evaluate(...) before syncing.")
 
         headers = {
@@ -143,7 +148,7 @@ class MeshEvaluator:
         response = requests.post(
             self.registry_url,
             headers=headers,
-            data=json.dumps(self.last_result),
+            data=json.dumps(result),
             timeout=self.timeout,
         )
         response.raise_for_status()
@@ -173,6 +178,18 @@ class MeshEvaluator:
                 return json.load(file_handle)
 
         raise TypeError("dataset must be a known dataset name, URL, JSON path, or list.")
+
+    def _normalize_registry_url(self, registry_url):
+        parsed = urlparse(registry_url)
+        path = parsed.path.rstrip("/")
+
+        if path in ("", "/"):
+            return registry_url.rstrip("/") + "/api/registry"
+
+        if path == "/api":
+            return registry_url.rstrip("/") + "/registry"
+
+        return registry_url.rstrip("/")
 
     def _call_model(self, model_endpoint, prompt):
         payload = {

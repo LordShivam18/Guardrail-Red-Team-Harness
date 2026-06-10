@@ -240,7 +240,7 @@ export default async function RegistryPage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {(["PLATINUM", "GOLD", "SILVER", "BRONZE", "UNRATED"] as const).map(
+              {(["PLATINUM", "GOLD", "SILVER", "BRONZE", "UNRANKED"] as const).map(
                 (tier) => (
                   <span
                     className={`inline-flex rounded-none border px-2 py-0.5 font-mono text-[10px] font-bold uppercase ${tierBadgeClasses(

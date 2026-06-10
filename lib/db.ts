@@ -1,4 +1,6 @@
 import { neon } from "@neondatabase/serverless";
+import { calculateMeshScore, getMeshTier } from "./meshScore";
+import type { MeshTier } from "./meshScore";
 
 type SqlClient = ReturnType<typeof neon>;
 type RequiredTableRow = {
@@ -18,6 +20,9 @@ type ModelComparisonSummaryRow = {
   defusal_success_rate: number;
   average_latency_ms: number | null;
   false_positive_count: number;
+  avg_jailbreak_rate: number;
+  avg_fp_rate: number;
+  avg_safety_sharpe: number;
 };
 
 export type HistoricalRunSummary = {
@@ -29,12 +34,17 @@ export type HistoricalRunSummary = {
 
 export type ModelComparisonSummary = {
   modelName: string;
+  meshScore: number;
+  tier: MeshTier;
   totalInteractions: number;
   totalAttackInteractions: number;
   blockedAttempts: number;
   defusalSuccessRate: number;
   averageLatencyMs: number | null;
   falsePositiveCount: number;
+  avgJailbreakRate: number;
+  avgFpRate: number;
+  avgSafetySharpe: number;
 };
 
 let sqlClient: SqlClient | undefined;
@@ -142,9 +152,12 @@ export async function getModelComparisonSummary(): Promise<ModelComparisonSummar
       select
         model_version as model_name,
         count(*)::int as run_count,
+        round(avg(jailbreak_rate)::numeric, 4)::double precision as avg_jailbreak_rate,
+        round(avg(fp_rate)::numeric, 4)::double precision as avg_fp_rate,
+        round(avg(coalesce(safety_sharpe, 0))::numeric, 4)::double precision
+          as avg_safety_sharpe,
         round(((1 - avg(jailbreak_rate)) * 100)::numeric, 2)::double precision
-          as run_defusal_success_rate,
-        round(avg(fp_rate)::numeric, 4)::double precision as avg_fp_rate
+          as run_defusal_success_rate
       from redteam_runs
       group by model_version
     ),
@@ -210,6 +223,9 @@ export async function getModelComparisonSummary(): Promise<ModelComparisonSummar
     )
     select
       run_metrics.model_name,
+      run_metrics.avg_jailbreak_rate,
+      run_metrics.avg_fp_rate,
+      run_metrics.avg_safety_sharpe,
       coalesce(result_aggregates.total_interactions, run_metrics.run_count)::int
         as total_interactions,
       coalesce(
@@ -236,19 +252,40 @@ export async function getModelComparisonSummary(): Promise<ModelComparisonSummar
     left join result_aggregates
       on result_aggregates.model_name = run_metrics.model_name
     order by
-      defusal_success_rate desc,
+      round(
+        (
+          1000
+          - run_metrics.avg_jailbreak_rate * 500
+          - run_metrics.avg_fp_rate * 500
+          + run_metrics.avg_safety_sharpe * 10
+        )::numeric,
+        0
+      ) desc,
       average_latency_ms asc nulls last,
       total_interactions desc,
       model_name asc
   `) as ModelComparisonSummaryRow[];
 
-  return rows.map((row) => ({
-    modelName: row.model_name,
-    totalInteractions: row.total_interactions,
-    totalAttackInteractions: row.total_attack_interactions,
-    blockedAttempts: row.blocked_attempts,
-    defusalSuccessRate: row.defusal_success_rate,
-    averageLatencyMs: row.average_latency_ms,
-    falsePositiveCount: row.false_positive_count
-  }));
+  return rows.map((row) => {
+    const meshScore = calculateMeshScore(
+      row.avg_jailbreak_rate,
+      row.avg_fp_rate,
+      row.avg_safety_sharpe
+    );
+
+    return {
+      modelName: row.model_name,
+      meshScore,
+      tier: getMeshTier(meshScore),
+      totalInteractions: row.total_interactions,
+      totalAttackInteractions: row.total_attack_interactions,
+      blockedAttempts: row.blocked_attempts,
+      defusalSuccessRate: row.defusal_success_rate,
+      averageLatencyMs: row.average_latency_ms,
+      falsePositiveCount: row.false_positive_count,
+      avgJailbreakRate: row.avg_jailbreak_rate,
+      avgFpRate: row.avg_fp_rate,
+      avgSafetySharpe: row.avg_safety_sharpe
+    };
+  });
 }

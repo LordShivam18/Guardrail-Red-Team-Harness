@@ -139,8 +139,8 @@ function validateCertificateHash(value: string | null) {
 
   const normalized = value.toLowerCase();
 
-  if (!/^[a-f0-9]{64,128}$/.test(normalized)) {
-    throw new Error("certificateHash must be a 64-128 character hexadecimal string.");
+  if (!/^[a-f0-9]{8,128}$/.test(normalized)) {
+    throw new Error("certificateHash must be an 8-128 character hexadecimal string.");
   }
 
   return normalized;

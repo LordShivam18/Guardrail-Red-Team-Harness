@@ -4,11 +4,11 @@ import { FuzzerPanel } from "@/components/FuzzerPanel";
 import { HistoricalTrend } from "@/components/HistoricalTrend";
 import { IncidentLog } from "@/components/IncidentLog";
 import { InteractiveSandbox } from "@/components/InteractiveSandbox";
-import { ParetoFrontier } from "@/components/ParetoFrontier";
+import { ParetoFrontierPanel } from "@/components/ParetoFrontierPanel";
 import { RefreshButton } from "@/components/RefreshButton";
 import { RunSummary } from "@/components/RunSummary";
 import { ToolingTabs } from "@/components/ToolingTabs";
-import { WhiteboxDiagnostics } from "@/components/WhiteboxDiagnostics";
+import { WhiteboxDiagnosticsPanel } from "@/components/WhiteboxDiagnosticsPanel";
 import { getLatestRunSummary } from "@/lib/redteamDashboard";
 
 async function CertificateBadge() {
@@ -44,6 +44,12 @@ function IncidentSkeleton() {
 function TrendSkeleton() {
   return (
     <section className="h-96 animate-pulse rounded-md border border-neutral-800 bg-neutral-950" />
+  );
+}
+
+function ToolPanelSkeleton() {
+  return (
+    <section className="h-[34rem] animate-pulse rounded-md border border-neutral-800 bg-neutral-950" />
   );
 }
 
@@ -90,8 +96,16 @@ export function DashboardShell() {
         <ToolingTabs
           sandboxSlot={<InteractiveSandbox />}
           fuzzerSlot={<FuzzerPanel />}
-          paretoSlot={<ParetoFrontier />}
-          whiteboxSlot={<WhiteboxDiagnostics />}
+          paretoSlot={
+            <Suspense fallback={<ToolPanelSkeleton />}>
+              <ParetoFrontierPanel />
+            </Suspense>
+          }
+          whiteboxSlot={
+            <Suspense fallback={<ToolPanelSkeleton />}>
+              <WhiteboxDiagnosticsPanel />
+            </Suspense>
+          }
         />
 
         <Suspense fallback={<SummarySkeleton />}>
