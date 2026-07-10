@@ -49,7 +49,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          ACTIVE_JUDGE_PROVIDER: ${{ vars.ACTIVE_JUDGE_PROVIDER || 'gemini' }}
+          ACTIVE_JUDGE_PROVIDER: ${{ vars.ACTIVE_JUDGE_PROVIDER || 'gemini-native' }}
           OLLAMA_MODEL: ${{ vars.OLLAMA_MODEL || 'qwen2:1.5b' }}
 
       - name: Run Mesh CI Security Gate

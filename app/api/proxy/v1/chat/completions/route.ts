@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   type Content,
   FinishReason,
@@ -9,6 +10,7 @@ import {
 } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { judgeAgent } from "@/agents/judgeAgent";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,6 +20,12 @@ const MAX_MESSAGE_CONTENT_LENGTH = 32_000;
 const MAX_SHADOW_PROMPT_LENGTH = 4_000;
 const STREAM_SANITIZER_CARRY_CHARS = 96;
 const SAFETY_REFUSAL = "I am sorry, but I cannot assist with that request.";
+const DEFAULT_PROXY_RATE_LIMIT = 60;
+const DEFAULT_PROXY_RATE_WINDOW_SECS = 60;
+const RATE_LIMIT_EXCEEDED_RESPONSE = {
+  error: "RATE_LIMIT_EXCEEDED",
+  message: "Compute exhaustion protection activated. Throttle your requests."
+};
 
 type ContentPartText = {
   type: "text";
@@ -53,17 +61,70 @@ class RequestValidationError extends Error {
 }
 
 export async function POST(request: Request) {
+  const requestId = randomUUID();
+  const clientIp = getClientIp(request);
+  const responseHeaders = getRequestHeaders(requestId);
+
+  try {
+    const rateLimit = await checkRateLimit(
+      clientIp,
+      getPositiveIntegerEnv("PROXY_RATE_LIMIT", DEFAULT_PROXY_RATE_LIMIT),
+      getPositiveIntegerEnv("PROXY_RATE_WINDOW_SECS", DEFAULT_PROXY_RATE_WINDOW_SECS)
+    );
+
+    if (!rateLimit.allowed) {
+      logProxyEvent("warn", {
+        event: "RATE_LIMIT_EXCEEDED",
+        requestId,
+        ip: clientIp,
+        limit: rateLimit.limit,
+        remaining: rateLimit.remaining,
+        retryAfterSecs: rateLimit.retryAfterSecs,
+        resetAt: new Date(rateLimit.resetAt).toISOString()
+      });
+
+      return NextResponse.json(RATE_LIMIT_EXCEEDED_RESPONSE, {
+        status: 429,
+        headers: {
+          ...responseHeaders,
+          "retry-after": String(rateLimit.retryAfterSecs)
+        }
+      });
+    }
+  } catch (error) {
+    logProxyEvent("error", {
+      event: "RATE_LIMIT_UNAVAILABLE",
+      requestId,
+      ip: clientIp,
+      error: serializeError(error)
+    });
+
+    return NextResponse.json(
+      {
+        error: "RATE_LIMIT_UNAVAILABLE",
+        message: "Compute exhaustion protection unavailable."
+      },
+      { status: 503, headers: responseHeaders }
+    );
+  }
+
   let requestBody: ParsedChatCompletionRequest;
 
   try {
     requestBody = parseChatCompletionRequest(await request.json());
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Request body must be valid JSON." },
+        { status: 400, headers: responseHeaders }
+      );
     }
 
     if (error instanceof RequestValidationError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status, headers: responseHeaders }
+      );
     }
 
     throw error;
@@ -80,30 +141,84 @@ export async function POST(request: Request) {
             "Security Policy Violation: Malicious request dropped by Active Interception Proxy.",
           taxonomy: "OWASP-LLM01"
         },
-        { status: 403 }
+        { status: 403, headers: responseHeaders }
       );
     }
 
-    scheduleShadowSandboxEvaluation(lastIncomingContent, requestBody.model);
+    scheduleShadowSandboxEvaluation(lastIncomingContent, requestBody.model, requestId);
 
     if (requestBody.stream) {
-      return streamGeminiChatCompletion(requestBody);
+      return streamGeminiChatCompletion(requestBody, requestId);
     }
 
-    return generateGeminiChatCompletion(requestBody);
+    return generateGeminiChatCompletion(requestBody, requestId);
   } catch (error) {
     if (error instanceof RequestValidationError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status, headers: responseHeaders }
+      );
     }
 
-    console.error("[proxy] Active interception proxy failed.");
-    console.error(error);
+    logProxyEvent("error", {
+      event: "ACTIVE_INTERCEPTION_PROXY_FAILED",
+      requestId,
+      error: serializeError(error)
+    });
 
     return NextResponse.json(
       { error: "Active Interception Proxy failed to process the request." },
-      { status: 502 }
+      { status: 502, headers: responseHeaders }
     );
   }
+}
+
+function getClientIp(request: Request) {
+  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+
+  return forwardedFor || "unknown";
+}
+
+function getRequestHeaders(requestId: string): Record<string, string> {
+  return {
+    "x-request-id": requestId
+  };
+}
+
+function getPositiveIntegerEnv(name: string, fallback: number) {
+  const parsed = Number(process.env[name]);
+
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+
+  return Math.trunc(parsed);
+}
+
+function logProxyEvent(
+  level: "log" | "warn" | "error",
+  payload: Record<string, unknown>
+) {
+  console[level](
+    JSON.stringify({
+      service: "guardrail-mesh-proxy",
+      timestamp: new Date().toISOString(),
+      ...payload
+    })
+  );
+}
+
+function serializeError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message
+    };
+  }
+
+  return {
+    message: String(error)
+  };
 }
 
 function parseChatCompletionRequest(value: unknown): ParsedChatCompletionRequest {
@@ -333,25 +448,39 @@ function extractTextContent(content: string | ContentPart[]): string {
     .trim();
 }
 
-function scheduleShadowSandboxEvaluation(prompt: string, targetModel: string) {
+function scheduleShadowSandboxEvaluation(
+  prompt: string,
+  targetModel: string,
+  requestId: string
+) {
   try {
     setImmediate(() => {
       void (async () => {
         try {
-          await runShadowSandboxEvaluation(prompt, targetModel);
+          await runShadowSandboxEvaluation(prompt, targetModel, requestId);
         } catch (error) {
-          console.error("[proxy-shadow] Shadow sandbox evaluation failed.");
-          console.error(error);
+          logProxyEvent("error", {
+            event: "SHADOW_SANDBOX_EVALUATION_FAILED",
+            requestId,
+            error: serializeError(error)
+          });
         }
       })();
     });
   } catch (error) {
-    console.error("[proxy-shadow] Unable to schedule shadow sandbox evaluation.");
-    console.error(error);
+    logProxyEvent("error", {
+      event: "SHADOW_SANDBOX_SCHEDULE_FAILED",
+      requestId,
+      error: serializeError(error)
+    });
   }
 }
 
-async function runShadowSandboxEvaluation(prompt: string, targetModel: string) {
+async function runShadowSandboxEvaluation(
+  prompt: string,
+  targetModel: string,
+  requestId: string
+) {
   try {
     const { guardedResponse } = await import("@/agents/guardedAgent");
     const mutatedPrompt = buildShadowFuzzPrompt(prompt);
@@ -364,14 +493,20 @@ async function runShadowSandboxEvaluation(prompt: string, targetModel: string) {
       }
     });
 
-    console.log(
-      `[proxy-shadow] completed model=${response.modelName} blocked=${response.blocked} judgeSafe=${
-        response.judgeEvaluation?.isSafe ?? "unknown"
-      } latency=${Date.now() - startedAt}ms`
-    );
+    logProxyEvent("log", {
+      event: "SHADOW_SANDBOX_EVALUATION_COMPLETED",
+      requestId,
+      model: response.modelName,
+      blocked: response.blocked,
+      judgeSafe: response.judgeEvaluation?.isSafe ?? "unknown",
+      latencyMs: Date.now() - startedAt
+    });
   } catch (error) {
-    console.error("[proxy-shadow] Shadow sandbox evaluation failed.");
-    console.error(error);
+    logProxyEvent("error", {
+      event: "SHADOW_SANDBOX_EVALUATION_FAILED",
+      requestId,
+      error: serializeError(error)
+    });
   }
 }
 
@@ -398,7 +533,10 @@ function buildShadowFuzzPrompt(prompt: string) {
   ].join("\n");
 }
 
-async function generateGeminiChatCompletion(requestBody: ParsedChatCompletionRequest) {
+async function generateGeminiChatCompletion(
+  requestBody: ParsedChatCompletionRequest,
+  requestId: string
+) {
   const startedAt = Math.floor(Date.now() / 1000);
   const model = getGeminiModel(requestBody);
   const result = await model.generateContent({
@@ -409,25 +547,31 @@ async function generateGeminiChatCompletion(requestBody: ParsedChatCompletionReq
   const blocked = isGeminiBlocked(result.response.promptFeedback?.blockReason, candidate?.finishReason);
   const content = blocked ? SAFETY_REFUSAL : sanitizeAssistantOutput(result.response.text());
 
-  return NextResponse.json({
-    id: createChatCompletionId(),
-    object: "chat.completion",
-    created: startedAt,
-    model: requestBody.model,
-    choices: [
-      {
-        index: 0,
-        message: {
-          role: "assistant",
-          content
-        },
-        finish_reason: blocked ? "content_filter" : mapFinishReason(candidate?.finishReason)
-      }
-    ]
-  });
+  return NextResponse.json(
+    {
+      id: createChatCompletionId(),
+      object: "chat.completion",
+      created: startedAt,
+      model: requestBody.model,
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content
+          },
+          finish_reason: blocked ? "content_filter" : mapFinishReason(candidate?.finishReason)
+        }
+      ]
+    },
+    { headers: getRequestHeaders(requestId) }
+  );
 }
 
-async function streamGeminiChatCompletion(requestBody: ParsedChatCompletionRequest) {
+async function streamGeminiChatCompletion(
+  requestBody: ParsedChatCompletionRequest,
+  requestId: string
+) {
   const encoder = new TextEncoder();
   const id = createChatCompletionId();
   const created = Math.floor(Date.now() / 1000);
@@ -490,9 +634,13 @@ async function streamGeminiChatCompletion(requestBody: ParsedChatCompletionReque
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       } catch (error) {
-        console.error("[proxy] Gemini streaming request failed.");
-        console.error(error);
+        logProxyEvent("error", {
+          event: "GEMINI_STREAMING_REQUEST_FAILED",
+          requestId,
+          error: serializeError(error)
+        });
         enqueueSse(controller, encoder, {
+          request_id: requestId,
           error: "Upstream Gemini streaming request failed."
         });
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -503,6 +651,7 @@ async function streamGeminiChatCompletion(requestBody: ParsedChatCompletionReque
 
   return new Response(stream, {
     headers: {
+      "x-request-id": requestId,
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
       connection: "keep-alive"
