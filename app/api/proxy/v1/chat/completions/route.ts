@@ -26,6 +26,7 @@ const RATE_LIMIT_EXCEEDED_RESPONSE = {
   error: "RATE_LIMIT_EXCEEDED",
   message: "Compute exhaustion protection activated. Throttle your requests."
 };
+const AUDIO_DATA_URI_PATTERN = /data:(audio\/[^;\s]+);base64,([A-Za-z0-9+/=_-]+)/gi;
 
 type ContentPartText = {
   type: "text";
@@ -37,7 +38,15 @@ type ContentPartImageUrl = {
   image_url: { url: string };
 };
 
-type ContentPart = ContentPartText | ContentPartImageUrl;
+type ContentPartInputAudio = {
+  type: "input_audio";
+  input_audio: {
+    data: string;
+    format?: string;
+  };
+};
+
+type ContentPart = ContentPartText | ContentPartImageUrl | ContentPartInputAudio;
 
 type ChatCompletionMessage = {
   role: string;
@@ -131,21 +140,30 @@ export async function POST(request: Request) {
   }
 
   try {
-    const lastIncomingContent = getLastIncomingContent(requestBody.messages);
-    const verdict = await judgeAgent.evaluate(lastIncomingContent, "");
+    const lastIncomingContent = getLastIncomingAuditableText(requestBody.messages);
 
-    if (!verdict.isSafe) {
-      return NextResponse.json(
-        {
-          error:
-            "Security Policy Violation: Malicious request dropped by Active Interception Proxy.",
-          taxonomy: "OWASP-LLM01"
-        },
-        { status: 403, headers: responseHeaders }
-      );
+    if (lastIncomingContent) {
+      const verdict = await judgeAgent.evaluate(lastIncomingContent, "");
+
+      if (!verdict.isSafe) {
+        return NextResponse.json(
+          {
+            error:
+              "Security Policy Violation: Malicious request dropped by Active Interception Proxy.",
+            taxonomy: "OWASP-LLM01"
+          },
+          { status: 403, headers: responseHeaders }
+        );
+      }
+
+      scheduleShadowSandboxEvaluation(lastIncomingContent, requestBody.model, requestId);
+    } else {
+      logProxyEvent("warn", {
+        event: "AUDIO_TEXT_JUDGE_BYPASSED",
+        requestId,
+        message: "Audio-only payload bypassed local text judge and was routed to Gemini."
+      });
     }
-
-    scheduleShadowSandboxEvaluation(lastIncomingContent, requestBody.model, requestId);
 
     if (requestBody.stream) {
       return streamGeminiChatCompletion(requestBody, requestId);
@@ -250,7 +268,7 @@ function parseMessage(value: unknown, index: number): ChatCompletionMessage {
     throw new RequestValidationError(`messages[${index}].role must be a non-empty string.`);
   }
 
-  // Multi-modal: content is an array of { type, text/image_url } objects
+  // Multi-modal: content is an array of { type, text/image_url/input_audio } objects
   if (Array.isArray(value.content)) {
     const parts: ContentPart[] = [];
 
@@ -281,13 +299,35 @@ function parseMessage(value: unknown, index: number): ChatCompletionMessage {
           type: "image_url",
           image_url: { url: part.image_url.url }
         });
+      } else if (part.type === "input_audio") {
+        if (!isJsonRecord(part.input_audio) || typeof part.input_audio.data !== "string") {
+          throw new RequestValidationError(
+            `messages[${index}].content[] input_audio part must have an \`input_audio.data\` string.`
+          );
+        }
+
+        const format = part.input_audio.format;
+
+        if (format !== undefined && typeof format !== "string") {
+          throw new RequestValidationError(
+            `messages[${index}].content[] input_audio.format must be a string when provided.`
+          );
+        }
+
+        parts.push({
+          type: "input_audio",
+          input_audio: {
+            data: part.input_audio.data,
+            format
+          }
+        });
       }
       // Unknown part types are silently dropped for forward compatibility
     }
 
     if (parts.length === 0) {
       throw new RequestValidationError(
-        `messages[${index}].content must contain at least one text or image_url part.`
+        `messages[${index}].content must contain at least one text, image_url, or input_audio part.`
       );
     }
 
@@ -415,16 +455,20 @@ function parseOptionalNumber(value: unknown, fieldName: string) {
  * For multi-modal payloads, this concatenates all text parts and ignores
  * image_url parts — the judge evaluates the *instructions*, not the pixels.
  */
-function getLastIncomingContent(messages: ChatCompletionMessage[]) {
+function getLastIncomingAuditableText(messages: ChatCompletionMessage[]) {
   const lastMessage = messages[messages.length - 1];
 
   if (!lastMessage) {
     throw new RequestValidationError("The messages array must not be empty.");
   }
 
-  const content = extractTextContent(lastMessage.content);
+  const content = extractAuditableTextContent(lastMessage.content);
 
   if (!content) {
+    if (hasAudioContent(lastMessage.content)) {
+      return null;
+    }
+
     throw new RequestValidationError("The last message content must be non-empty.");
   }
 
@@ -446,6 +490,44 @@ function extractTextContent(content: string | ContentPart[]): string {
     .map((part) => part.text)
     .join("\n")
     .trim();
+}
+
+function extractAuditableTextContent(content: string | ContentPart[]): string {
+  if (typeof content === "string") {
+    return stripAudioDataUris(content).trim();
+  }
+
+  return content
+    .filter((part): part is ContentPartText => part.type === "text")
+    .map((part) => stripAudioDataUris(part.text))
+    .join("\n")
+    .trim();
+}
+
+function hasAudioContent(content: string | ContentPart[]) {
+  if (typeof content === "string") {
+    return containsAudioDataUri(content);
+  }
+
+  return content.some((part) => {
+    if (part.type === "input_audio") {
+      return true;
+    }
+
+    if (part.type === "image_url") {
+      return containsAudioDataUri(part.image_url.url);
+    }
+
+    return containsAudioDataUri(part.text);
+  });
+}
+
+function stripAudioDataUris(value: string) {
+  return value.replace(AUDIO_DATA_URI_PATTERN, "").replace(/\s+/g, " ");
+}
+
+function containsAudioDataUri(value: string) {
+  return /data:audio\/[^;\s]+;base64,[A-Za-z0-9+/=_-]+/i.test(value);
 }
 
 function scheduleShadowSandboxEvaluation(
@@ -701,30 +783,112 @@ function getGeminiContents(messages: ChatCompletionMessage[]): Content[] {
  */
 function mapContentToParts(content: string | ContentPart[]): Part[] {
   if (typeof content === "string") {
-    return [{ text: content }];
+    return mapStringContentToParts(content);
   }
 
-  return content.map((part): Part => {
+  return content.flatMap((part): Part[] => {
     if (part.type === "text") {
-      return { text: part.text };
+      return mapStringContentToParts(part.text);
     }
 
-    // part.type === "image_url"
-    const url = part.image_url.url;
-    const dataUriMatch = url.match(/^data:([^;]+);base64,(.+)$/);
+    if (part.type === "input_audio") {
+      return [mapInputAudioToPart(part.input_audio)];
+    }
 
-    if (dataUriMatch) {
-      return {
-        inlineData: {
-          mimeType: dataUriMatch[1],
-          data: dataUriMatch[2]
-        }
-      };
+    const url = part.image_url.url;
+    const inlineDataPart = mapDataUriToInlinePart(url);
+
+    if (inlineDataPart) {
+      return [inlineDataPart];
     }
 
     // Fallback: if it's a plain URL (not a data URI), pass as text reference
-    return { text: `[Image: ${url.slice(0, 120)}]` };
+    return [{ text: `[Image: ${url.slice(0, 120)}]` }];
   });
+}
+
+function mapStringContentToParts(content: string): Part[] {
+  const parts: Part[] = [];
+  const audioUriRegex = /data:(audio\/[^;]+);base64,([A-Za-z0-9+/=_-]+)/gi;
+  let cursor = 0;
+
+  for (const match of content.matchAll(audioUriRegex)) {
+    const matchIndex = match.index ?? 0;
+    const precedingText = content.slice(cursor, matchIndex);
+
+    if (precedingText) {
+      parts.push({ text: precedingText });
+    }
+
+    parts.push({
+      inlineData: {
+        mimeType: match[1],
+        data: match[2]
+      }
+    });
+    cursor = matchIndex + match[0].length;
+  }
+
+  const trailingText = content.slice(cursor);
+
+  if (trailingText) {
+    parts.push({ text: trailingText });
+  }
+
+  return parts.length > 0 ? parts : [{ text: content }];
+}
+
+function mapInputAudioToPart(inputAudio: ContentPartInputAudio["input_audio"]): Part {
+  const inlineDataPart = mapDataUriToInlinePart(inputAudio.data);
+
+  if (inlineDataPart) {
+    return inlineDataPart;
+  }
+
+  return {
+    inlineData: {
+      mimeType: getAudioMimeType(inputAudio.format),
+      data: inputAudio.data.replace(/\s/g, "")
+    }
+  };
+}
+
+function mapDataUriToInlinePart(value: string): Part | null {
+  const audioUriRegex = /^data:(audio\/[^;]+);base64,(.+)$/i;
+  const imageUriRegex = /^data:(image\/[^;]+);base64,(.+)$/i;
+  const audioMatch = value.match(audioUriRegex);
+
+  if (audioMatch) {
+    return {
+      inlineData: {
+        mimeType: audioMatch[1],
+        data: audioMatch[2]
+      }
+    };
+  }
+
+  const imageMatch = value.match(imageUriRegex);
+
+  if (imageMatch) {
+    return {
+      inlineData: {
+        mimeType: imageMatch[1],
+        data: imageMatch[2]
+      }
+    };
+  }
+
+  return null;
+}
+
+function getAudioMimeType(format: string | undefined) {
+  const normalizedFormat = format?.trim().toLowerCase().replace(/^\./, "") || "wav";
+
+  if (normalizedFormat.includes("/")) {
+    return normalizedFormat.startsWith("audio/") ? normalizedFormat : "audio/wav";
+  }
+
+  return `audio/${normalizedFormat}`;
 }
 
 function getSystemInstruction(messages: ChatCompletionMessage[]) {

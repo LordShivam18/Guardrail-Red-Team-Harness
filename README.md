@@ -104,11 +104,6 @@ npm run compliance:anchor
 
 `.github/workflows/nightly-redteam.yml` runs the harness on every push to `main`, on a nightly cron, and on manual dispatch. Configure these GitHub repository secrets before enabling it:
 
-```text
-DATABASE_URL
-GEMINI_API_KEY
-```
-
 ## Dashboard
 
 The Next.js dashboard shows the latest run summary, jailbreak success rate, false positive rate, total test count, and incident log. It is optimized for regression review rather than marketing: the first screen is the operational control room.
