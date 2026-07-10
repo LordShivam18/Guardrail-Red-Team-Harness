@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getEvidenceProvenance } from "@/lib/complianceEvidence";
 import { getLatestRunIncidents, getLatestRunSummary } from "@/lib/redteamDashboard";
 import { generateRegulatoryAuditReport } from "@/lib/regulatoryMapper";
 import type { IncidentLogRow } from "@/lib/redteamDashboard";
@@ -157,8 +158,11 @@ export async function GET() {
       );
     }
 
+    const generatedAt = new Date().toISOString();
+
     return NextResponse.json({
-      generatedAt: new Date().toISOString(),
+      generatedAt,
+      provenance: getEvidenceProvenance(generatedAt),
       pipelineHeartbeatStatus: "Pipeline: Automated (Nightly Cron Active)",
       run: {
         id: summary.runId,

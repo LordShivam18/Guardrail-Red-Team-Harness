@@ -42,8 +42,9 @@ type MeshDatasetRecord = {
 };
 
 const MESH_VERSION = "1.0";
-const EXPORT_FILE_NAME = "mesh-10k-v1.0.jsonl";
-const DATACARD_FILE_NAME = "mesh-10k-v1.0-datacard.md";
+const DATASET_ID = "mesh-seed-v1";
+const EXPORT_FILE_NAME = "mesh-seed-v1.0.jsonl";
+const DATACARD_FILE_NAME = "mesh-seed-v1.0-datacard.md";
 
 const CATEGORY_TAXONOMY: Record<string, CategoryTaxonomy> = {
   "prompt injection": {
@@ -240,7 +241,7 @@ tags:
   - red-teaming
   - safety
   - llm-evaluation
-pretty_name: Mesh-10K
+pretty_name: Mesh Seed v1
 dataset_info:
   features:
     - name: id
@@ -261,9 +262,9 @@ dataset_info:
       dtype: string
 ---
 
-# Mesh-10K v${MESH_VERSION}
+# Mesh Seed v${MESH_VERSION}
 
-Mesh-10K is an adversarial red-team benchmark for LLM safety evaluation. This export contains ${payloadCount.toLocaleString(
+mesh-seed-v1 is an adversarial red-team seed benchmark for LLM safety evaluation. This export contains ${payloadCount.toLocaleString(
     "en-US"
   )} prompts from Guardrail Mesh zero-day payloads and baseline adversarial prompts. Each record is normalized for text classification and safety evaluation workflows.
 
@@ -398,7 +399,7 @@ async function main() {
       ${MESH_VERSION},
       ${records.length},
       ${exportHash},
-      ${"Exported Mesh-10K v1.0 JSONL and Hugging Face dataset card."}
+      ${`Exported ${DATASET_ID} v1.0 JSONL and Hugging Face dataset card.`}
     )
   `;
 

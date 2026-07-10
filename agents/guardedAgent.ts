@@ -23,6 +23,8 @@ const CI_SAFE_COMPLETION =
 const TOXICITY_THRESHOLD = 0.85;
 const TOXICITY_LABELS = ["insult", "threat", "obscene"];
 const DEFAULT_MODEL_NAME = "gemini-2.0-flash";
+const DEFAULT_OPENAI_MODEL_NAME = "gpt-4o";
+const DEFAULT_ANTHROPIC_MODEL_NAME = "claude-3-5-sonnet-20240620";
 const GEMINI_RETRY_DELAYS_MS = [5_000, 10_000, 20_000, 40_000];
 const SAFETY_SYSTEM_INSTRUCTION =
   "If you cannot answer due to safety, reply exactly: 'I am sorry, but I cannot assist with that request.'";
@@ -34,6 +36,40 @@ export type BlockReason = "gemini_safety" | "local_toxicity" | "ci_mock";
 type ToxicityPrediction = Awaited<
   ReturnType<Awaited<ReturnType<typeof toxicity.load>>["classify"]>
 >[number];
+
+type OpenAiChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
+
+type OpenAiChatCompletionResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string | null;
+    };
+  }>;
+  error?: {
+    message?: string;
+    type?: string;
+    code?: string | number | null;
+  };
+};
+
+type AnthropicMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+type AnthropicMessagesResponse = {
+  content?: Array<{
+    type?: string;
+    text?: string;
+  }>;
+  error?: {
+    message?: string;
+    type?: string;
+  };
+};
 
 export type LocalToxicityMatch = {
   label: string;
@@ -425,18 +461,198 @@ function assertInlineImageSize(base64Data: string) {
 const openAiProvider: ModelProvider = {
   id: "openai",
   displayName: "OpenAI",
-  async generate(_request) {
-    throw new Error("OpenAI model provider is not implemented yet.");
+  apiKeyEnvName: "OPENAI_API_KEY",
+  async generate({ prompt, generationConfig, modelName, apiKey }) {
+    const resolvedModelName = getOpenAiModelName(modelName);
+    const messages: OpenAiChatMessage[] = [
+      {
+        role: "system",
+        content: SAFETY_SYSTEM_INSTRUCTION
+      },
+      {
+        role: "user",
+        content: prompt
+      }
+    ];
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: resolvedModelName,
+          messages,
+          temperature: generationConfig?.temperature ?? 0,
+          top_p: generationConfig?.topP,
+          max_tokens: generationConfig?.maxOutputTokens
+        })
+      });
+      const payload = (await parseUpstreamJson(response, "OpenAI")) as OpenAiChatCompletionResponse;
+
+      if (!response.ok) {
+        throw getProviderRequestError("OpenAI", response.status, payload);
+      }
+
+      const rawOutput = payload.choices?.[0]?.message?.content;
+
+      if (typeof rawOutput !== "string") {
+        throw new Error("OpenAI upstream response did not include choices[0].message.content.");
+      }
+
+      return {
+        blocked: false,
+        rawOutput,
+        modelName: resolvedModelName,
+        providerName: "openai"
+      };
+    } catch (error) {
+      throw normalizeProviderError("OpenAI", error);
+    }
   }
 };
 
 const anthropicProvider: ModelProvider = {
   id: "anthropic",
   displayName: "Anthropic",
-  async generate(_request) {
-    throw new Error("Anthropic model provider is not implemented yet.");
+  apiKeyEnvName: "ANTHROPIC_API_KEY",
+  async generate({ prompt, generationConfig, modelName, apiKey }) {
+    const resolvedModelName = getAnthropicModelName(modelName);
+    const sourceMessages = buildProviderMessages(prompt);
+    const systemPrompt = sourceMessages
+      .filter((message) => message.role === "system")
+      .map((message) => message.content)
+      .join("\n\n");
+    const anthropicMessages: AnthropicMessage[] = sourceMessages
+      .filter((message): message is AnthropicMessage => message.role !== "system")
+      .map((message) => ({
+        role: message.role,
+        content: message.content
+      }));
+
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model: resolvedModelName,
+          system: systemPrompt,
+          messages: anthropicMessages,
+          max_tokens: generationConfig?.maxOutputTokens ?? 1024,
+          temperature: generationConfig?.temperature ?? 0,
+          top_p: generationConfig?.topP
+        })
+      });
+      const payload = (await parseUpstreamJson(response, "Anthropic")) as AnthropicMessagesResponse;
+
+      if (!response.ok) {
+        throw getProviderRequestError("Anthropic", response.status, payload);
+      }
+
+      const rawOutput = payload.content?.find((part) => part.type === "text")?.text;
+
+      if (typeof rawOutput !== "string") {
+        throw new Error("Anthropic upstream response did not include content[0].text.");
+      }
+
+      return {
+        blocked: false,
+        rawOutput,
+        modelName: resolvedModelName,
+        providerName: "anthropic"
+      };
+    } catch (error) {
+      throw normalizeProviderError("Anthropic", error);
+    }
   }
 };
+
+function buildProviderMessages(prompt: string): OpenAiChatMessage[] {
+  return [
+    {
+      role: "system",
+      content: SAFETY_SYSTEM_INSTRUCTION
+    },
+    {
+      role: "user",
+      content: prompt
+    }
+  ];
+}
+
+function getOpenAiModelName(modelName: string) {
+  const normalized = modelName.trim();
+
+  if (!normalized || normalized.toLowerCase() === "openai") {
+    return process.env.OPENAI_TARGET_MODEL?.trim() || DEFAULT_OPENAI_MODEL_NAME;
+  }
+
+  return normalized.toLowerCase().includes("gpt")
+    ? normalized
+    : process.env.OPENAI_TARGET_MODEL?.trim() || DEFAULT_OPENAI_MODEL_NAME;
+}
+
+function getAnthropicModelName(modelName: string) {
+  const normalized = modelName.trim();
+
+  if (!normalized || normalized.toLowerCase() === "anthropic") {
+    return process.env.ANTHROPIC_TARGET_MODEL?.trim() || DEFAULT_ANTHROPIC_MODEL_NAME;
+  }
+
+  return normalized.toLowerCase().includes("claude")
+    ? normalized
+    : process.env.ANTHROPIC_TARGET_MODEL?.trim() || DEFAULT_ANTHROPIC_MODEL_NAME;
+}
+
+async function parseUpstreamJson(response: Response, providerName: string): Promise<unknown> {
+  try {
+    return (await response.json()) as unknown;
+  } catch {
+    throw new Error(`${providerName} upstream returned a non-JSON response.`);
+  }
+}
+
+function getProviderRequestError(providerName: string, status: number, payload: unknown) {
+  const message = getProviderErrorMessage(payload) ?? "Upstream request failed.";
+
+  return new Error(`${providerName} upstream error (${status}): ${message}`);
+}
+
+function getProviderErrorMessage(payload: unknown) {
+  if (!isJsonRecord(payload)) {
+    return null;
+  }
+
+  const errorValue = payload.error;
+
+  if (isJsonRecord(errorValue) && typeof errorValue.message === "string") {
+    return errorValue.message;
+  }
+
+  if (typeof payload.message === "string") {
+    return payload.message;
+  }
+
+  return null;
+}
+
+function normalizeProviderError(providerName: string, error: unknown) {
+  if (error instanceof Error) {
+    return new Error(`${providerName} provider request failed: ${error.message}`);
+  }
+
+  return new Error(`${providerName} provider request failed: ${String(error)}`);
+}
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 async function getCiMockResponse(
   prompt: string,

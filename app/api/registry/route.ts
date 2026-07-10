@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { verifyWebhookSignature } from "@/lib/crypto";
 import { sql } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +43,11 @@ type RegistryMetrics = {
 
 type InsertedRunRow = {
   certificate_hash: string;
+};
+
+const INVALID_SIGNATURE_RESPONSE = {
+  error: "INVALID_SIGNATURE",
+  message: "Cryptographic signature verification failed. Submission rejected."
 };
 
 function isJsonRecord(value: unknown): value is Record<string, unknown> {
@@ -147,10 +153,22 @@ function validateCertificateHash(value: string | null) {
 }
 
 export async function POST(request: Request) {
+  const rawPayload = await request.text();
+  const signature = request.headers.get("x-mesh-signature")?.trim() ?? "";
+  const registrySecret = process.env.REGISTRY_TENANT_SECRET?.trim() ?? "";
+
+  if (
+    !signature ||
+    !registrySecret ||
+    !verifyWebhookSignature(rawPayload, signature, registrySecret)
+  ) {
+    return NextResponse.json(INVALID_SIGNATURE_RESPONSE, { status: 403 });
+  }
+
   let rawBody: unknown;
 
   try {
-    rawBody = await request.json();
+    rawBody = JSON.parse(rawPayload) as unknown;
   } catch {
     return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
   }

@@ -4,6 +4,7 @@ import { useState } from "react";
 
 type ReportPayload = {
   generatedAt: string;
+  provenance: EvidenceProvenance;
   pipelineHeartbeatStatus: string;
   run: {
     id: string;
@@ -30,7 +31,20 @@ type ReportPayload = {
   }[];
 };
 
+type EvidenceProvenance = {
+  evaluator_version: string;
+  dataset_hash: string;
+  dataset_id?: string;
+  timestamp_iso: string;
+  model_runtime_config: {
+    temperature: number;
+    top_p: number;
+    max_tokens: number;
+  };
+};
+
 type EvidencePack = {
+  provenance?: EvidenceProvenance;
   frameworks: {
     name: string;
     version: string;
@@ -365,6 +379,21 @@ async function buildExecutiveCompliancePdf(
     safeCertificateHash
       ? `HASH ${safeCertificateHash}`
       : "Not available"
+  );
+
+  drawSectionTitle("Audit Provenance");
+  const provenance = evidencePack?.provenance ?? payload.provenance;
+  drawLabelValue("Evaluator Version", provenance.evaluator_version);
+  drawLabelValue("Dataset ID", provenance.dataset_id ?? "mesh-seed-v1");
+  drawLabelValue("Dataset Hash", provenance.dataset_hash);
+  drawLabelValue("Provenance Timestamp", formatTimestamp(provenance.timestamp_iso));
+  drawLabelValue(
+    "Model Runtime Config",
+    [
+      `temperature=${provenance.model_runtime_config.temperature}`,
+      `top_p=${provenance.model_runtime_config.top_p}`,
+      `max_tokens=${provenance.model_runtime_config.max_tokens}`
+    ].join(", ")
   );
 
   drawSectionTitle("Executive Metrics");

@@ -583,7 +583,7 @@ export function FuzzerPanel() {
                 Mutation disabled — Official Certification Mode
               </p>
               <p className="mt-1 font-mono text-[11px] text-neutral-500">
-                Payloads are sourced directly from the Mesh-10K vulnerability database
+                Payloads are sourced directly from the mesh-seed-v1 vulnerability database
                 without client-side mutation. Raw payloads are tested as-is for
                 standardized scoring.
               </p>

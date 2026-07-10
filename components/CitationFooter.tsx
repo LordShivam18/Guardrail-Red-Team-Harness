@@ -3,10 +3,10 @@
 import { useState } from "react";
 
 const BIBTEX = `@misc{guardrailmesh2025,
-  title={Mesh-10K: Adversarial Red-Team Benchmark for LLM Safety},
+  title={mesh-seed-v1: Adversarial Red-Team Seed Benchmark for LLM Safety},
   author={Guardrail Mesh},
   year={2025},
-  url={https://huggingface.co/datasets/guardrail-mesh/mesh-10k}
+  url={https://huggingface.co/datasets/guardrail-mesh/mesh-seed-v1}
 }`;
 
 export function CitationFooter() {
@@ -28,16 +28,16 @@ export function CitationFooter() {
           <div className="mt-3 space-y-2 text-sm leading-6 text-neutral-400">
             <p>Guardrail Mesh Evaluation Framework v1.0 (2025).</p>
             <p>
-              Mesh-10K: An Adversarial Red-Team Benchmark for LLM Safety
+              mesh-seed-v1: An Adversarial Red-Team Seed Benchmark for LLM Safety
               Evaluation.
             </p>
             <p className="break-all">
               Dataset:{" "}
               <a
                 className="text-neutral-200 underline decoration-neutral-700 underline-offset-4 transition hover:text-white"
-                href="https://huggingface.co/datasets/guardrail-mesh/mesh-10k"
+                href="https://huggingface.co/datasets/guardrail-mesh/mesh-seed-v1"
               >
-                https://huggingface.co/datasets/guardrail-mesh/mesh-10k
+                https://huggingface.co/datasets/guardrail-mesh/mesh-seed-v1
               </a>
             </p>
             <p className="break-all">

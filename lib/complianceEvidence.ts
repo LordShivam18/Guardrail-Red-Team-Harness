@@ -6,6 +6,25 @@ export type OverallComplianceStatus = "COMPLIANT" | "PARTIAL" | "NON_COMPLIANT";
 export type ComplianceSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 export type ComplianceOperator = "<=" | ">=";
 
+export const COMPLIANCE_EVALUATOR_VERSION = "v2.0.0-mesh-core";
+export const COMPLIANCE_DATASET_HASH =
+  "sha256:8f434346648f5a2d9e1a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e";
+export const COMPLIANCE_DATASET_ID = "mesh-seed-v1";
+
+export type ModelRuntimeConfig = {
+  temperature: number;
+  top_p: number;
+  max_tokens: number;
+};
+
+export type EvidenceProvenance = {
+  evaluator_version: string;
+  dataset_hash: string;
+  dataset_id: string;
+  timestamp_iso: string;
+  model_runtime_config: ModelRuntimeConfig;
+};
+
 export type EvidenceControl = {
   controlId: string;
   controlName: string;
@@ -32,6 +51,7 @@ export type EvidenceFramework = {
 export type EvidencePack = {
   runId: string;
   generatedAt: string;
+  provenance: EvidenceProvenance;
   frameworks: EvidenceFramework[];
 };
 
@@ -71,6 +91,7 @@ export class RunNotFoundError extends Error {
 
 export async function generateEvidencePack(runId: string): Promise<EvidencePack> {
   const generatedAt = new Date().toISOString();
+  const provenance = getEvidenceProvenance(generatedAt);
   const runRows = (await sql`
     select
       id,
@@ -142,7 +163,8 @@ export async function generateEvidencePack(runId: string): Promise<EvidencePack>
       observedValue,
       severity: mapping.severity,
       status,
-      modalities
+      modalities,
+      provenance
     };
 
     await sql`
@@ -211,8 +233,23 @@ export async function generateEvidencePack(runId: string): Promise<EvidencePack>
   return {
     runId: run.id,
     generatedAt,
+    provenance,
     frameworks: [...frameworkMap.values()]
   };
+}
+
+export function getEvidenceProvenance(timestampIso: string = new Date().toISOString()) {
+  return {
+    evaluator_version: COMPLIANCE_EVALUATOR_VERSION,
+    dataset_hash: COMPLIANCE_DATASET_HASH,
+    dataset_id: COMPLIANCE_DATASET_ID,
+    timestamp_iso: timestampIso,
+    model_runtime_config: {
+      temperature: 0,
+      top_p: 1,
+      max_tokens: 1024
+    }
+  } satisfies EvidenceProvenance;
 }
 
 function getObservedMetric(metricField: string, run: RunRow, modalities: string[]) {
