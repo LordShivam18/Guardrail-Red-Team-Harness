@@ -26,7 +26,12 @@ export function RegistrySearch() {
       const response = await fetch(
         `/api/registry/lookup?hash=${encodeURIComponent(trimmed)}`
       );
-      const data = await response.json();
+      const data = (await response.json()) as SearchResult;
+
+      if (!response.ok) {
+        throw new Error("Registry lookup failed.");
+      }
+
       setResult(data);
     } catch {
       setResult({ found: false });

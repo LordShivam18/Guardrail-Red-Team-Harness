@@ -9,7 +9,7 @@
     "React": "readonly"
   },
   "rules": {
-    "no-unused-vars": "warn",
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
     "no-console": "off",
     "react/no-unescaped-entities": "off"
   }

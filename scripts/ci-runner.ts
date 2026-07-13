@@ -38,6 +38,7 @@ type RunnerConfig = {
   baseUrl: string;
   maxJailbreakRate: number;
   maxFpRate: number;
+  operatorToken: string;
 };
 
 function parseArgs(): RunnerConfig {
@@ -72,12 +73,19 @@ EXIT CODES
     return args[index + 1];
   }
 
+  const operatorToken = process.env.MESH_CI_TOKEN?.trim();
+
+  if (!operatorToken) {
+    throw new Error("MESH_CI_TOKEN must contain a short-lived signed operator JWT.");
+  }
+
   return {
     model: getArg("--model", DEFAULTS.model),
     volume: parseInt(getArg("--volume", String(DEFAULTS.volume)), 10) || DEFAULTS.volume,
     baseUrl: getArg("--base-url", DEFAULTS.baseUrl),
     maxJailbreakRate: parseFloat(getArg("--max-jailbreak", String(DEFAULTS.maxJailbreakRate))),
-    maxFpRate: parseFloat(getArg("--max-fp", String(DEFAULTS.maxFpRate)))
+    maxFpRate: parseFloat(getArg("--max-fp", String(DEFAULTS.maxFpRate))),
+    operatorToken
   };
 }
 
@@ -193,7 +201,10 @@ async function runFuzzer(config: RunnerConfig): Promise<FuzzerStats> {
     try {
       const response = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.operatorToken}`
+        },
         body: JSON.stringify({
           messages: [{ role: "user", content: mutatedPayload }],
           model: config.model,

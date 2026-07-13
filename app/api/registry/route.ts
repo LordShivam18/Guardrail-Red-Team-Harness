@@ -114,7 +114,7 @@ function validateOptionalNonNegative(value: number | null, fieldName: string) {
   return value;
 }
 
-function validateOptionalFinite(value: number | null, _fieldName: string) {
+function validateOptionalFinite(value: number | null) {
   return value ?? 0;
 }
 
@@ -208,8 +208,7 @@ export async function POST(request: Request) {
         body.safety_sharpe,
         metrics.safetySharpe,
         metrics.safety_sharpe
-      ),
-      "safetySharpe"
+      )
     );
     const safetyMean = validateOptionalRate(
       getFirstNumber(body.safetyMean, body.safety_mean, metrics.safetyMean, metrics.safety_mean),

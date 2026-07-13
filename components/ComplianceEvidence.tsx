@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { EvidenceFramework, EvidencePack } from "@/lib/complianceEvidence";
+import { anchorComplianceAction, getComplianceEvidenceAction } from "@/app/actions/operator";
 
 type ComplianceEvidenceProps = {
   runId: string;
@@ -65,20 +66,7 @@ export function ComplianceEvidence({ runId }: ComplianceEvidenceProps) {
       setErrorMessage(null);
 
       try {
-        const response = await fetch(
-          `/api/compliance/evidence?runId=${encodeURIComponent(runId)}`,
-          {
-            headers: {
-              Accept: "application/json"
-            },
-            cache: "no-store"
-          }
-        );
-        const payload = (await response.json()) as EvidencePack | { error?: string };
-
-        if (!response.ok) {
-          throw new Error("error" in payload ? payload.error : "Evidence fetch failed.");
-        }
+        const payload = await getComplianceEvidenceAction(runId);
 
         if (isMounted) {
           const nextPack = payload as EvidencePack;
@@ -130,17 +118,10 @@ export function ComplianceEvidence({ runId }: ComplianceEvidenceProps) {
     setErrorMessage(null);
 
     try {
-      const response = await fetch("/api/compliance/onchain-anchor", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ runId })
-      });
-      const payload = (await response.json()) as AnchorResponse | { error?: string };
+      const response = await anchorComplianceAction(runId);
+      const payload = response.body as AnchorResponse | { error?: string };
 
-      if (!response.ok) {
+      if (response.status >= 400) {
         throw new Error("error" in payload ? payload.error : "Anchoring failed.");
       }
 

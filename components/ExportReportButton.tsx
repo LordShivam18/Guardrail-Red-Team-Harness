@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { getComplianceEvidenceAction, getExecutiveComplianceReportAction } from "@/app/actions/operator";
 
 type ReportPayload = {
   generatedAt: string;
@@ -60,8 +61,6 @@ type EvidencePack = {
   }[];
 };
 
-const REPORT_ENDPOINT = "/api/reports/executive-compliance";
-
 function formatTimestamp(value: string) {
   return new Intl.DateTimeFormat("en", {
     dateStyle: "medium",
@@ -111,16 +110,10 @@ function formatEvidenceNumber(value: number | null | undefined) {
 }
 
 async function loadReportPayload() {
-  const response = await fetch(REPORT_ENDPOINT, {
-    method: "GET",
-    headers: {
-      Accept: "application/json"
-    },
-    cache: "no-store"
-  });
-  const payload = (await response.json()) as ReportPayload | { error?: string };
+  const response = await getExecutiveComplianceReportAction();
+  const payload = response.body as ReportPayload | { error?: string };
 
-  if (!response.ok) {
+  if (response.status >= 400) {
     throw new Error("error" in payload ? payload.error : "Report export failed.");
   }
 
@@ -128,23 +121,12 @@ async function loadReportPayload() {
 }
 
 async function loadEvidencePack(runId: string) {
-  const response = await fetch(
-    `/api/compliance/evidence?runId=${encodeURIComponent(runId)}`,
-    {
-      method: "GET",
-      headers: {
-        Accept: "application/json"
-      },
-      cache: "no-store"
-    }
-  );
-
-  if (!response.ok) {
+  try {
+    return await getComplianceEvidenceAction(runId);
+  } catch {
     console.warn("[report-export] Regulatory mapping evidence was unavailable.");
     return null;
   }
-
-  return (await response.json()) as EvidencePack;
 }
 
 async function buildExecutiveCompliancePdf(

@@ -11,10 +11,6 @@ function formatRate(value: number) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
-function formatPercent(value: number) {
-  return `${value.toFixed(2)}%`;
-}
-
 function formatLatency(value: number | null) {
   return value === null ? "Not tracked" : `${Math.round(value).toLocaleString()} ms`;
 }

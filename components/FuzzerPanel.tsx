@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import Image from "next/image";
+import { runProxyChatAction } from "@/app/actions/operator";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,7 +28,6 @@ type MeshPayload = {
 type TargetModel = {
   id: string;
   label: string;
-  endpoint: string;
 };
 
 type FuzzerLogEntry = {
@@ -47,23 +48,19 @@ type FuzzerState = "idle" | "running" | "complete" | "aborted";
 const TARGET_MODELS: TargetModel[] = [
   {
     id: "mesh-cert",
-    label: "Official Mesh Certification Run",
-    endpoint: "/api/proxy/v1/chat/completions"
+    label: "Official Mesh Certification Run"
   },
   {
     id: "qwen2-local",
-    label: "qwen2:1.5b (Air-gapped)",
-    endpoint: "/api/proxy/v1/chat/completions"
+    label: "qwen2:1.5b (Air-gapped)"
   },
   {
     id: "gemini-flash",
-    label: "gemini-2.0-flash",
-    endpoint: "/api/proxy/v1/chat/completions"
+    label: "gemini-2.0-flash"
   },
   {
     id: "gemini-guarded",
-    label: "Gemini-2.0-Flash-Guarded-v1",
-    endpoint: "/api/proxy/v1/chat/completions"
+    label: "Gemini-2.0-Flash-Guarded-v1"
   }
 ];
 
@@ -144,7 +141,7 @@ function StrategyToggle({
   onToggle
 }: {
   strategy: MutationStrategy;
-  onToggle: (id: string) => void;
+  onToggle: (_id: string) => void;
 }) {
   return (
     <button
@@ -310,14 +307,10 @@ export function FuzzerPanel() {
         : mutatedPayload;
 
       try {
-        const response = await fetch(selectedModel.endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: [{ role: "user", content: messageContent }],
-            model: isMeshCert ? "gemini-2.0-flash" : selectedModel.id,
-            stream: false
-          })
+        const response = await runProxyChatAction({
+          messages: [{ role: "user", content: messageContent }],
+          model: isMeshCert ? "gemini-2.0-flash" : selectedModel.id,
+          stream: false
         });
 
         const latency = Math.round(performance.now() - start);
@@ -325,7 +318,7 @@ export function FuzzerPanel() {
         if (response.status === 403) {
           status = "BLOCKED";
           localStats.blocked++;
-        } else if (response.ok) {
+        } else if (response.status >= 200 && response.status < 300) {
           status = "ALLOWED";
           localStats.allowed++;
         } else {
@@ -524,10 +517,13 @@ export function FuzzerPanel() {
           {visionPayload ? (
             <div className="mt-2 flex items-start gap-4 rounded-md border border-neutral-800 bg-neutral-950 p-3">
               <div className="relative flex-none">
-                <img
+                <Image
                   alt="Vision payload preview"
                   className="h-20 w-20 rounded-none border border-neutral-800 object-cover"
+                  height={80}
                   src={visionPayload}
+                  unoptimized
+                  width={80}
                 />
                 <button
                   className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-none border border-neutral-700 bg-neutral-900 font-mono text-[10px] font-bold text-neutral-400 transition hover:bg-red-950 hover:text-red-400"

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
+import { runSandboxAction } from "@/app/actions/operator";
 
 type SandboxResult = {
   prompt: string;
@@ -165,16 +166,10 @@ export default function PlaygroundPage() {
     setErrorMessage(null);
 
     try {
-      const response = await fetch("/api/sandbox", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ prompt: inputPrompt, targetModel })
-      });
-      const payload = (await response.json()) as SandboxResult | { error?: string };
+      const response = await runSandboxAction({ prompt: inputPrompt, targetModel });
+      const payload = response.body as SandboxResult | { error?: string };
 
-      if (!response.ok) {
+      if (response.status >= 400) {
         throw new Error("error" in payload ? payload.error : "Sandbox request failed.");
       }
 

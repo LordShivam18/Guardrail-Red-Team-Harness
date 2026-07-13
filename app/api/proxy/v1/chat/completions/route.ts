@@ -22,11 +22,13 @@ const STREAM_SANITIZER_CARRY_CHARS = 96;
 const SAFETY_REFUSAL = "I am sorry, but I cannot assist with that request.";
 const DEFAULT_PROXY_RATE_LIMIT = 60;
 const DEFAULT_PROXY_RATE_WINDOW_SECS = 60;
+const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
 const RATE_LIMIT_EXCEEDED_RESPONSE = {
   error: "RATE_LIMIT_EXCEEDED",
   message: "Compute exhaustion protection activated. Throttle your requests."
 };
 const AUDIO_DATA_URI_PATTERN = /data:(audio\/[^;\s]+);base64,([A-Za-z0-9+/=_-]+)/gi;
+const STRICT_DATA_URI_PATTERN = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/_-]+={0,2})$/i;
 
 type ContentPartText = {
   type: "text";
@@ -61,11 +63,14 @@ type ParsedChatCompletionRequest = {
 };
 
 class RequestValidationError extends Error {
+  readonly status: number;
+
   constructor(
     message: string,
-    readonly status = 400
+    status = 400
   ) {
     super(message);
+    this.status = status;
   }
 }
 
@@ -159,9 +164,9 @@ export async function POST(request: Request) {
       scheduleShadowSandboxEvaluation(lastIncomingContent, requestBody.model, requestId);
     } else {
       logProxyEvent("warn", {
-        event: "AUDIO_TEXT_JUDGE_BYPASSED",
+        event: "MEDIA_TEXT_JUDGE_BYPASSED",
         requestId,
-        message: "Audio-only payload bypassed local text judge and was routed to Gemini."
+        message: "Image-only or audio-only payload bypassed the local text judge and was routed to Gemini."
       });
     }
 
@@ -295,6 +300,7 @@ function parseMessage(value: unknown, index: number): ChatCompletionMessage {
             `messages[${index}].content[] image_url part must have an \`image_url.url\` string.`
           );
         }
+        validateImageUrlMedia(part.image_url.url);
         parts.push({
           type: "image_url",
           image_url: { url: part.image_url.url }
@@ -313,6 +319,8 @@ function parseMessage(value: unknown, index: number): ChatCompletionMessage {
             `messages[${index}].content[] input_audio.format must be a string when provided.`
           );
         }
+
+        validateInputAudioMedia(part.input_audio.data, format);
 
         parts.push({
           type: "input_audio",
@@ -359,6 +367,8 @@ function parseMessage(value: unknown, index: number): ChatCompletionMessage {
       413
     );
   }
+
+  validateEmbeddedMediaDataUris(value.content);
 
   return {
     role: value.role.trim(),
@@ -465,7 +475,7 @@ function getLastIncomingAuditableText(messages: ChatCompletionMessage[]) {
   const content = extractAuditableTextContent(lastMessage.content);
 
   if (!content) {
-    if (hasAudioContent(lastMessage.content)) {
+    if (hasNonTextMediaContent(lastMessage.content)) {
       return null;
     }
 
@@ -504,7 +514,7 @@ function extractAuditableTextContent(content: string | ContentPart[]): string {
     .trim();
 }
 
-function hasAudioContent(content: string | ContentPart[]) {
+function hasNonTextMediaContent(content: string | ContentPart[]) {
   if (typeof content === "string") {
     return containsAudioDataUri(content);
   }
@@ -515,7 +525,7 @@ function hasAudioContent(content: string | ContentPart[]) {
     }
 
     if (part.type === "image_url") {
-      return containsAudioDataUri(part.image_url.url);
+      return true;
     }
 
     return containsAudioDataUri(part.text);
@@ -796,7 +806,17 @@ function mapContentToParts(content: string | ContentPart[]): Part[] {
     }
 
     const url = part.image_url.url;
-    const inlineDataPart = mapDataUriToInlinePart(url);
+    const dataUri = parseStrictDataUri(url);
+
+    if (dataUri?.mimeType.startsWith("audio/")) {
+      throw new RequestValidationError("image_url parts must not contain audio media.");
+    }
+
+    if (dataUri && !dataUri.mimeType.startsWith("image/")) {
+      throw new RequestValidationError("image_url data URIs must use an image MIME type.");
+    }
+
+    const inlineDataPart = dataUri ? toInlineDataPart(dataUri) : null;
 
     if (inlineDataPart) {
       return [inlineDataPart];
@@ -820,12 +840,13 @@ function mapStringContentToParts(content: string): Part[] {
       parts.push({ text: precedingText });
     }
 
-    parts.push({
-      inlineData: {
-        mimeType: match[1],
-        data: match[2]
-      }
-    });
+    const dataUri = parseStrictDataUri(match[0]);
+
+    if (!dataUri || !dataUri.mimeType.startsWith("audio/")) {
+      throw new RequestValidationError("Inline audio content must use a valid audio base64 data URI.");
+    }
+
+    parts.push(toInlineDataPart(dataUri));
     cursor = matchIndex + match[0].length;
   }
 
@@ -839,46 +860,99 @@ function mapStringContentToParts(content: string): Part[] {
 }
 
 function mapInputAudioToPart(inputAudio: ContentPartInputAudio["input_audio"]): Part {
-  const inlineDataPart = mapDataUriToInlinePart(inputAudio.data);
+  const dataUri = parseStrictDataUri(inputAudio.data);
 
-  if (inlineDataPart) {
-    return inlineDataPart;
+  if (dataUri) {
+    if (!dataUri.mimeType.startsWith("audio/")) {
+      throw new RequestValidationError("input_audio data URIs must use an audio MIME type.");
+    }
+
+    return toInlineDataPart(dataUri);
   }
+
+  const data = inputAudio.data.replace(/\s/g, "");
+  assertBase64Payload(data, "input_audio.data");
+  assertMediaSize(data, "input_audio.data");
 
   return {
     inlineData: {
       mimeType: getAudioMimeType(inputAudio.format),
-      data: inputAudio.data.replace(/\s/g, "")
+      data
     }
   };
 }
 
-function mapDataUriToInlinePart(value: string): Part | null {
-  const audioUriRegex = /^data:(audio\/[^;]+);base64,(.+)$/i;
-  const imageUriRegex = /^data:(image\/[^;]+);base64,(.+)$/i;
-  const audioMatch = value.match(audioUriRegex);
+type StrictDataUri = { mimeType: string; data: string };
 
-  if (audioMatch) {
-    return {
-      inlineData: {
-        mimeType: audioMatch[1],
-        data: audioMatch[2]
-      }
-    };
+function parseStrictDataUri(value: string): StrictDataUri | null {
+  if (!value.toLowerCase().startsWith("data:")) {
+    return null;
   }
 
-  const imageMatch = value.match(imageUriRegex);
+  const match = STRICT_DATA_URI_PATTERN.exec(value);
 
-  if (imageMatch) {
-    return {
-      inlineData: {
-        mimeType: imageMatch[1],
-        data: imageMatch[2]
-      }
-    };
+  if (!match) {
+    throw new RequestValidationError("Media data URIs must be strictly base64 encoded.");
   }
 
-  return null;
+  const mimeType = match[1].toLowerCase();
+  const data = match[2];
+  assertBase64Payload(data, "media data URI");
+  assertMediaSize(data, "media data URI");
+  return { mimeType, data };
+}
+
+function toInlineDataPart(dataUri: StrictDataUri): Part {
+  return { inlineData: { mimeType: dataUri.mimeType, data: dataUri.data } };
+}
+
+function validateImageUrlMedia(value: string) {
+  const dataUri = parseStrictDataUri(value);
+
+  if (dataUri?.mimeType.startsWith("audio/")) {
+    throw new RequestValidationError("image_url parts must not contain audio media.");
+  }
+
+  if (dataUri && !dataUri.mimeType.startsWith("image/")) {
+    throw new RequestValidationError("image_url data URIs must use an image MIME type.");
+  }
+}
+
+function validateInputAudioMedia(value: string, format: string | undefined) {
+  const dataUri = parseStrictDataUri(value);
+
+  if (dataUri && !dataUri.mimeType.startsWith("audio/")) {
+    throw new RequestValidationError("input_audio data URIs must use an audio MIME type.");
+  }
+
+  if (!dataUri) {
+    const data = value.replace(/\s/g, "");
+    assertBase64Payload(data, "input_audio.data");
+    assertMediaSize(data, "input_audio.data");
+    getAudioMimeType(format);
+  }
+}
+
+function validateEmbeddedMediaDataUris(value: string) {
+  const matches = value.matchAll(/data:(?:image|audio)\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/_-]+={0,2}/gi);
+
+  for (const match of matches) {
+    parseStrictDataUri(match[0]);
+  }
+}
+
+function assertBase64Payload(value: string, label: string) {
+  if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(value) || value.length % 4 === 1) {
+    throw new RequestValidationError(`${label} must contain valid base64 data.`);
+  }
+}
+
+function assertMediaSize(base64Data: string, label: string) {
+  const decodedBytes = Math.floor((base64Data.length * 3) / 4);
+
+  if (decodedBytes > MAX_MEDIA_BYTES) {
+    throw new RequestValidationError(`${label} exceeds the ${MAX_MEDIA_BYTES} byte media limit.`, 413);
+  }
 }
 
 function getAudioMimeType(format: string | undefined) {
