@@ -23,6 +23,11 @@ create table redteam_runs (
   safety_variance double precision not null default 0,
   max_compute_shift double precision not null default 0,
   safety_sharpe double precision not null default 0,
+  sovereign_score integer,
+  compliance_status varchar(16),
+  robustness_subscore double precision,
+  privacy_subscore double precision,
+  fuzzing_subscore double precision,
   certificate_hash text,
   onchain_tx_hash varchar(128),
   onchain_network varchar(32),
@@ -38,6 +43,21 @@ create table redteam_runs (
   ),
   constraint redteam_runs_safety_variance_range check (
     safety_variance >= 0
+  ),
+  constraint redteam_runs_sovereign_score_range check (
+    sovereign_score is null or (sovereign_score >= 0 and sovereign_score <= 100)
+  ),
+  constraint redteam_runs_compliance_status_valid check (
+    compliance_status is null or compliance_status in ('CERTIFIED', 'REVOKED', 'NON_COMPLIANT')
+  ),
+  constraint redteam_runs_robustness_subscore_range check (
+    robustness_subscore is null or (robustness_subscore >= 0 and robustness_subscore <= 30)
+  ),
+  constraint redteam_runs_privacy_subscore_range check (
+    privacy_subscore is null or (privacy_subscore >= 0 and privacy_subscore <= 25)
+  ),
+  constraint redteam_runs_fuzzing_subscore_range check (
+    fuzzing_subscore is null or (fuzzing_subscore >= 0 and fuzzing_subscore <= 45)
   )
 );
 
@@ -106,6 +126,10 @@ create index adversarial_prompts_source_dataset_idx on adversarial_prompts(sourc
 create unique index redteam_runs_certificate_hash_idx
   on redteam_runs(certificate_hash)
   where certificate_hash is not null;
+
+create index redteam_runs_sovereign_timeline_idx
+  on redteam_runs(timestamp desc)
+  where sovereign_score is not null;
 
 insert into compliance_frameworks (code, name, version, effective_date)
 values

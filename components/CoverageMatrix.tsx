@@ -27,6 +27,10 @@ type ModalityCoverageResponse = {
   error?: string;
 };
 
+function isResponseRecord(value: unknown): value is { error?: string } {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 const OWASP_ROWS = [
   { id: "LLM01", label: "Prompt Injection" },
   { id: "LLM02", label: "Insecure Output Handling" },
@@ -67,6 +71,28 @@ function cellTone(count: number) {
   return "border-emerald-800/70 bg-emerald-950/20 text-emerald-200";
 }
 
+async function readCoverageJson<T extends { error?: string }>(
+  response: Response,
+  endpoint: string
+): Promise<T> {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (!contentType.includes("application/json")) {
+    await response.text();
+    throw new Error(`${endpoint} returned an unexpected non-JSON response (${response.status}).`);
+  }
+
+  try {
+    const payload: unknown = await response.json();
+    if (!isResponseRecord(payload)) {
+      throw new Error(`${endpoint} returned an invalid JSON payload (${response.status}).`);
+    }
+    return payload as T;
+  } catch {
+    throw new Error(`${endpoint} returned malformed JSON (${response.status}).`);
+  }
+}
+
 export function CoverageMatrix() {
   const [groups, setGroups] = useState<CoverageGroup[]>([]);
   const [modalityGroups, setModalityGroups] = useState<ModalityCoverageGroup[]>([]);
@@ -83,14 +109,20 @@ export function CoverageMatrix() {
       try {
         const [coverageResponse, modalityResponse] = await Promise.all([
           fetch("/api/mesh-payloads?group_by=owasp,severity", {
+            credentials: "same-origin",
+            headers: { accept: "application/json" },
             signal: controller.signal
           }),
           fetch("/api/coverage/modality", {
+            credentials: "same-origin",
+            headers: { accept: "application/json" },
             signal: controller.signal
           })
         ]);
-        const payload = (await coverageResponse.json()) as CoverageResponse;
-        const modalityPayload = (await modalityResponse.json()) as ModalityCoverageResponse;
+        const [payload, modalityPayload] = await Promise.all([
+          readCoverageJson<CoverageResponse>(coverageResponse, "Coverage"),
+          readCoverageJson<ModalityCoverageResponse>(modalityResponse, "Modality coverage")
+        ]);
 
         if (!coverageResponse.ok || payload.error) {
           throw new Error(payload.error ?? "Coverage request failed.");

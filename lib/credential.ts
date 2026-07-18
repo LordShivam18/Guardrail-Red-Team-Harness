@@ -1,9 +1,15 @@
 import { canonicalizeJson, sovereignIssuerSigner } from "@/lib/issuerSigner";
 import { sovereignRegulatoryLedger, type RegulatoryLedgerEvent } from "@/lib/regulatoryLedger";
-import type { PrivacyAssessment } from "@/lib/privacy";
+import {
+  calculateSovereignIndex,
+  SOVEREIGN_INDEX_PASSING_SCORE,
+} from "@/lib/sovereign/scoring";
 import type {
+  PrivacyAssessment,
   RobustnessCertificate,
   SovereignAudit,
+  SovereignFuzzerStats,
+  SovereignIndexResult,
 } from "@/lib/sovereign/types";
 
 export const SOVEREIGN_DID = "did:web:guardrail-mesh.local";
@@ -13,6 +19,7 @@ export type SovereignCredentialInput = {
   audit: SovereignAudit;
   robustness: RobustnessCertificate;
   privacy: PrivacyAssessment;
+  fuzzerStats: SovereignFuzzerStats;
   credentialSubjectId?: string;
 };
 
@@ -28,6 +35,11 @@ export type SovereignVerifiableCredential = {
     audit: SovereignAudit;
     robustness: RobustnessCertificate;
     privacy: PrivacyAssessment;
+    fuzzer: SovereignFuzzerStats;
+    sovereign_score: number;
+    compliance_breakdown: SovereignIndexResult["breakdown"];
+    assertion_status: "VERIFIED" | "REVOKED";
+    mandatory_passing_threshold: number;
   };
   proof: {
     type: "DataIntegrityProof";
@@ -49,6 +61,13 @@ export async function issueSovereignCredential(
   auditData: SovereignCredentialInput,
 ): Promise<IssuedSovereignCredential> {
   const issuanceDate = new Date().toISOString();
+  const sovereignIndex = calculateSovereignIndex(
+    auditData.robustness,
+    auditData.privacy,
+    auditData.fuzzerStats,
+  );
+  const assertionStatus: "VERIFIED" | "REVOKED" =
+    sovereignIndex.score >= SOVEREIGN_INDEX_PASSING_SCORE ? "VERIFIED" : "REVOKED";
   const unsignedCredential = {
     "@context": ["https://www.w3.org/ns/credentials/v2"] as const,
     id: `urn:guardrail-mesh:credential:${auditData.audit.id}`,
@@ -61,6 +80,11 @@ export async function issueSovereignCredential(
       audit: auditData.audit,
       robustness: auditData.robustness,
       privacy: auditData.privacy,
+      fuzzer: auditData.fuzzerStats,
+      sovereign_score: sovereignIndex.score,
+      compliance_breakdown: sovereignIndex.breakdown,
+      assertion_status: assertionStatus,
+      mandatory_passing_threshold: SOVEREIGN_INDEX_PASSING_SCORE,
     },
   };
   const signature = await sovereignIssuerSigner.signDigest(canonicalizeJson(unsignedCredential));

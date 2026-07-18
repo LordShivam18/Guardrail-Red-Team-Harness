@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { getComplianceEvidenceAction, getExecutiveComplianceReportAction } from "@/app/actions/operator";
+import { getComplianceEvidenceAction } from "@/app/actions/operator";
 
 type ReportPayload = {
   generatedAt: string;
@@ -61,6 +61,10 @@ type EvidencePack = {
   }[];
 };
 
+function isResponseRecord(value: unknown): value is { error?: string } {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function formatTimestamp(value: string) {
   return new Intl.DateTimeFormat("en", {
     dateStyle: "medium",
@@ -110,11 +114,30 @@ function formatEvidenceNumber(value: number | null | undefined) {
 }
 
 async function loadReportPayload() {
-  const response = await getExecutiveComplianceReportAction();
-  const payload = response.body as ReportPayload | { error?: string };
+  const response = await fetch("/api/reports/executive-compliance", {
+    credentials: "same-origin",
+    headers: { accept: "application/json" }
+  });
+  const contentType = response.headers.get("content-type") ?? "";
 
-  if (response.status >= 400) {
-    throw new Error("error" in payload ? payload.error : "Report export failed.");
+  if (!contentType.includes("application/json")) {
+    await response.text();
+    throw new Error(`Report service returned an unexpected non-JSON response (${response.status}).`);
+  }
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error(`Report service returned malformed JSON (${response.status}).`);
+  }
+
+  if (!isResponseRecord(payload)) {
+    throw new Error(`Report service returned an invalid JSON payload (${response.status}).`);
+  }
+
+  if (!response.ok) {
+    throw new Error(typeof payload.error === "string" ? payload.error : "Report export failed.");
   }
 
   return payload as ReportPayload;

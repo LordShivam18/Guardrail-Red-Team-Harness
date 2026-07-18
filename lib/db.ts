@@ -11,6 +11,8 @@ type HistoricalRunRow = {
   timestamp: string;
   jailbreak_rate: number;
   fp_rate: number;
+  sovereign_score: number | null;
+  compliance_status: "CERTIFIED" | "REVOKED" | "NON_COMPLIANT" | null;
 };
 type ModelComparisonSummaryRow = {
   model_name: string;
@@ -31,6 +33,8 @@ export type HistoricalRunSummary = {
   timestamp: string;
   jailbreakRate: number;
   fpRate: number;
+  sovereignScore: number | null;
+  complianceStatus: "CERTIFIED" | "REVOKED" | "NON_COMPLIANT" | null;
 };
 
 export type ModelComparisonSummary = {
@@ -126,13 +130,17 @@ export async function getHistoricalRunSummary(
       id as run_id,
       timestamp,
       jailbreak_rate,
-      fp_rate
+      fp_rate,
+      sovereign_score,
+      compliance_status
     from (
       select
         id,
         timestamp,
         jailbreak_rate,
-        fp_rate
+        fp_rate,
+        nullif(to_jsonb(redteam_runs)->>'sovereign_score', '')::integer as sovereign_score,
+        nullif(to_jsonb(redteam_runs)->>'compliance_status', '') as compliance_status
       from redteam_runs
       order by timestamp desc
       limit ${safeLimit}
@@ -144,7 +152,9 @@ export async function getHistoricalRunSummary(
     runId: row.run_id,
     timestamp: row.timestamp,
     jailbreakRate: row.jailbreak_rate,
-    fpRate: row.fp_rate
+    fpRate: row.fp_rate,
+    sovereignScore: row.sovereign_score,
+    complianceStatus: row.compliance_status
   }));
 }
 

@@ -22,6 +22,7 @@ type TrendPoint = {
   timestampMs: number;
   jailbreakRate: number;
   fpRate: number;
+  sovereignScore: number | null;
 };
 
 type TooltipPayload = {
@@ -39,6 +40,10 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
+}
+
+function formatScore(value: number | null) {
+  return value === null ? "PENDING" : `${value} / 100`;
 }
 
 function formatAxisTime(value: number) {
@@ -83,6 +88,10 @@ function TrendTooltip({ active, payload }: TrendTooltipProps) {
           </span>
         </div>
         <div className="flex items-center justify-between gap-5 text-sm">
+          <span className="text-neutral-400">Sovereign 100</span>
+          <span className="font-black text-white">{formatScore(point.sovereignScore)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-5 text-sm">
           <span className="text-neutral-400">False Positive Rate</span>
           <span className="font-black text-white">
             {formatPercent(point.fpRate)}
@@ -102,7 +111,8 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
         timestamp: run.timestamp,
         timestampMs: new Date(run.timestamp).getTime(),
         jailbreakRate: run.jailbreakRate,
-        fpRate: run.fpRate
+        fpRate: run.fpRate,
+        sovereignScore: run.sovereignScore
       })),
     [runs]
   );
@@ -110,8 +120,7 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
   const domains = useMemo(() => {
     if (chartData.length === 0) {
       return {
-        jailbreakMax: 0.1,
-        fpMax: 0.1,
+        rateMax: 0.1,
         x: [0, ONE_DAY_MS] as [number, number]
       };
     }
@@ -122,8 +131,9 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
     const xPadding = minTimestamp === maxTimestamp ? ONE_DAY_MS : 0;
 
     return {
-      jailbreakMax: getRateDomainMax(chartData.map((point) => point.jailbreakRate)),
-      fpMax: getRateDomainMax(chartData.map((point) => point.fpRate)),
+      rateMax: getRateDomainMax(
+        chartData.flatMap((point) => [point.jailbreakRate, point.fpRate])
+      ),
       x: [minTimestamp - xPadding, maxTimestamp + xPadding] as [number, number]
     };
   }, [chartData]);
@@ -131,7 +141,8 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
   const peaks = useMemo(
     () => ({
       jailbreak: Math.max(0, ...chartData.map((point) => point.jailbreakRate)),
-      fp: Math.max(0, ...chartData.map((point) => point.fpRate))
+      fp: Math.max(0, ...chartData.map((point) => point.fpRate)),
+      latestSovereignScore: chartData.at(-1)?.sovereignScore ?? null
     }),
     [chartData]
   );
@@ -164,12 +175,15 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
           <h2 className="mt-2 text-2xl font-black tracking-tight text-white">Run Timeline</h2>
         </div>
 
-        <div className="grid gap-2 text-sm sm:grid-cols-2 lg:text-right">
+        <div className="grid gap-2 text-sm sm:grid-cols-3 lg:text-right">
           <p className="font-mono font-bold text-red-500">
             Jailbreak peak {formatPercent(peaks.jailbreak)}
           </p>
           <p className="font-mono font-bold text-white">
             FP peak {formatPercent(peaks.fp)}
+          </p>
+          <p className="font-mono font-bold text-white">
+            Sovereign {formatScore(peaks.latestSovereignScore)}
           </p>
         </div>
       </div>
@@ -186,6 +200,10 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
             }}
           >
             <defs>
+              <linearGradient id="sovereignGradient" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor="#ffffff" stopOpacity={0.28} />
+                <stop offset="100%" stopColor="#ffffff" stopOpacity={0.01} />
+              </linearGradient>
               <linearGradient id="jailbreakGradient" x1="0" x2="0" y1="0" y2="1">
                 <stop offset="0%" stopColor="#ef4444" stopOpacity={0.4} />
                 <stop offset="56%" stopColor="#ef4444" stopOpacity={0.12} />
@@ -209,27 +227,39 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
             />
             <YAxis
               axisLine={false}
-              domain={[0, domains.jailbreakMax]}
+              domain={[0, 100]}
               orientation="left"
+              stroke="#ffffff"
+              tickFormatter={(value) => String(value)}
+              tickLine={false}
+              width={44}
+              yAxisId="sovereign"
+            />
+            <YAxis
+              axisLine={false}
+              domain={[0, domains.rateMax]}
+              orientation="right"
               stroke="#ef4444"
               tickFormatter={formatPercent}
               tickLine={false}
               width={44}
-              yAxisId="jailbreak"
-            />
-            <YAxis
-              axisLine={false}
-              domain={[0, domains.fpMax]}
-              orientation="right"
-              stroke="#a3a3a3"
-              tickFormatter={formatPercent}
-              tickLine={false}
-              width={44}
-              yAxisId="fp"
+              yAxisId="rate"
             />
             <Tooltip
               content={<TrendTooltip />}
               cursor={{ stroke: "#525252", strokeOpacity: 0.5 }}
+            />
+            <Area
+              activeDot={{ r: 6, fill: "#ffffff", stroke: "#000000", strokeWidth: 2 }}
+              connectNulls={false}
+              dataKey="sovereignScore"
+              dot={{ r: 3, fill: "#000000", stroke: "#ffffff", strokeWidth: 2 }}
+              fill="url(#sovereignGradient)"
+              name="Sovereign 100"
+              stroke="#ffffff"
+              strokeWidth={2}
+              type="monotone"
+              yAxisId="sovereign"
             />
             <Area
               activeDot={{
@@ -250,7 +280,7 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
               stroke="#ef4444"
               strokeWidth={2}
               type="monotone"
-              yAxisId="jailbreak"
+              yAxisId="rate"
             />
             <Area
               activeDot={{
@@ -271,7 +301,7 @@ export function HistoricalTrendChart({ runs }: HistoricalTrendChartProps) {
               stroke="#ffffff"
               strokeWidth={2}
               type="monotone"
-              yAxisId="fp"
+              yAxisId="rate"
             />
           </AreaChart>
         </ResponsiveContainer>

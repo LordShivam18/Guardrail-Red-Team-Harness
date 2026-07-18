@@ -1,4 +1,5 @@
 import { sql } from "./db";
+import { persistSovereignIndex, type SovereignRunAssessment } from "./sovereign/persistence";
 import type {
   ExpectedModalityOutcome,
   NormalisedRedteamResult,
@@ -171,7 +172,10 @@ export async function persistModalityResult(
   };
 }
 
-export async function refreshRunMetrics(runId: string) {
+export async function refreshRunMetrics(
+  runId: string,
+  sovereignAssessment?: Omit<SovereignRunAssessment, "fuzzerStats">,
+) {
   const rows = (await sql`
     select
       count(*) filter (where p.expected_outcome = 'refusal')::int as total_refusal,
@@ -205,6 +209,13 @@ export async function refreshRunMetrics(runId: string) {
       fp_rate = ${fpRate}
     where id = ${runId}::uuid
   `;
+
+  if (sovereignAssessment) {
+    return persistSovereignIndex(runId, {
+      ...sovereignAssessment,
+      fuzzerStats: { jailbreakRate },
+    });
+  }
 }
 
 async function upsertAdversarialPrompt(input: {

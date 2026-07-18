@@ -20,11 +20,19 @@ function createToken(overrides: Record<string, unknown> = {}) {
   return `${header}.${payload}.${signature}`;
 }
 
-function createRequest(authorization?: string, path = "/api/proxy/v1/chat/completions") {
+function createRequest(
+  authorization?: string,
+  path = "/api/proxy/v1/chat/completions",
+  cookie?: string
+) {
   const headers = new Headers();
 
   if (authorization) {
     headers.set("authorization", authorization);
+  }
+
+  if (cookie) {
+    headers.set("cookie", cookie);
   }
 
   return new NextRequest(`http://localhost${path}`, {
@@ -41,8 +49,7 @@ describe("Mesh API middleware", () => {
     const response = await middleware(createRequest());
 
     await expect(response.json()).resolves.toEqual({
-      error: "UNAUTHORIZED_EXECUTION",
-      message: "Valid Bearer token required for Mesh APIs."
+      error: "UNAUTHORIZED"
     });
     expect(response.status).toBe(401);
   });
@@ -63,9 +70,16 @@ describe("Mesh API middleware", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({
-      error: "UNAUTHORIZED_EXECUTION",
-      message: "Valid Bearer token required for Mesh APIs."
+      error: "UNAUTHORIZED"
     });
+  });
+
+  it("accepts an HttpOnly operator session cookie for dashboard API fetches", async () => {
+    const response = await middleware(
+      createRequest(undefined, "/api/coverage/modality", `mesh_session=${createToken()}`)
+    );
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
   });
 
   it("rejects an unsigned or expired operator token", async () => {
@@ -90,6 +104,8 @@ describe("Mesh API middleware", () => {
       "/api/sandbox",
       "/api/registry",
       "/api/compliance/:path*",
+      "/api/coverage/:path*",
+      "/api/mesh-payloads",
       "/api/reports/:path*",
       "/dashboard/:path*",
       "/playground/:path*"

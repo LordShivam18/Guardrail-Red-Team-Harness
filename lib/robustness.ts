@@ -8,6 +8,7 @@ export type RandomizedSmoothingInput = {
   scope: RobustnessScope;
   noiseStandardDeviation?: number;
   certifiedTokenDeletionRadius?: number;
+  targetSafetyEpsilon?: number;
 };
 
 /**
@@ -47,7 +48,11 @@ export function verifyRandomizedSmoothing(
       pA,
       pB,
       epsilonRadius: radius,
-      scope
+      scope,
+      rawMetrics: {
+        certifiedL2Radius: radius,
+        targetSafetyEpsilon: input.targetSafetyEpsilon,
+      },
     };
   }
 
@@ -68,7 +73,12 @@ export function verifyRandomizedSmoothing(
     pA,
     pB,
     epsilonRadius: radius,
-    scope
+    scope,
+    rawMetrics: {
+      certifiedL2Radius: radius,
+      noiseStandardDeviation: sigma,
+      targetSafetyEpsilon: input.targetSafetyEpsilon,
+    },
   };
 }
 

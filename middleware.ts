@@ -3,14 +3,16 @@ import type { NextRequest } from "next/server";
 import { getBearerToken, verifyOperatorToken } from "@/lib/auth-token";
 
 const UNAUTHORIZED_RESPONSE = {
-  error: "UNAUTHORIZED_EXECUTION",
-  message: "Valid Bearer token required for Mesh APIs."
+  error: "UNAUTHORIZED"
 };
 
 export async function middleware(request: NextRequest) {
-  const token =
-    getBearerToken(request.headers.get("authorization")) ?? request.cookies.get("mesh_session")?.value;
-  const identity = token ? await verifyOperatorToken(token) : null;
+  const bearerToken = getBearerToken(request.headers.get("authorization"));
+  const sessionToken = request.cookies.get("mesh_session")?.value;
+  // Verify each credential independently. An invalid external Authorization
+  // header must not prevent an authenticated dashboard cookie from working.
+  const bearerIdentity = bearerToken ? await verifyOperatorToken(bearerToken) : null;
+  const identity = bearerIdentity ?? (sessionToken ? await verifyOperatorToken(sessionToken) : null);
 
   if (!identity) {
     if (!request.nextUrl.pathname.startsWith("/api/")) {
@@ -35,6 +37,8 @@ export const config = {
     "/api/sandbox",
     "/api/registry",
     "/api/compliance/:path*",
+    "/api/coverage/:path*",
+    "/api/mesh-payloads",
     "/api/reports/:path*",
     "/dashboard/:path*",
     "/playground/:path*"

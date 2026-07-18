@@ -19,6 +19,10 @@ const robustness = {
     sampleCount: 10_000,
     alpha: 0.001,
   },
+  rawMetrics: {
+    targetSafetyEpsilon: 0.7,
+    certifiedL2Radius: 0.7,
+  },
 };
 
 describe("sovereign credentials and ledger", () => {
@@ -27,12 +31,22 @@ describe("sovereign credentials and ledger", () => {
       audit,
       robustness,
       privacy: { status: "COMPLIANT", epsilon: 3, delta: 1e-6 },
+      fuzzerStats: { jailbreakRate: 0.1, totalAttempts: 1_000 },
     });
 
     expect(issued.credential).toMatchObject({
       "@context": ["https://www.w3.org/ns/credentials/v2"],
       type: ["VerifiableCredential", "SovereignAIAudit"],
       issuer: SOVEREIGN_DID,
+      credentialSubject: {
+        sovereign_score: 86,
+        compliance_breakdown: {
+          robustness: 30,
+          privacy: 15.63,
+          fuzzing: 40.5,
+        },
+        assertion_status: "VERIFIED",
+      },
       proof: { proofPurpose: "assertionMethod", verificationMethod: `${SOVEREIGN_DID}#assertion-1` },
     });
     expect(issued.credential.proof.proofValue).not.toHaveLength(0);
@@ -47,5 +61,19 @@ describe("sovereign credentials and ledger", () => {
     expect(first.previous_event_hash).toBeNull();
     expect(second.previous_event_hash).toBe(first.event_hash);
     expect(second.merkle_root).not.toBe(first.merkle_root);
+  });
+
+  it("marks a below-threshold signed assertion as revoked", async () => {
+    const issued = await issueSovereignCredential({
+      audit: { ...audit, id: "audit-revoked" },
+      robustness,
+      privacy: { status: "NON_COMPLIANT", reason: "Privacy budget exceeds regulatory maximums." },
+      fuzzerStats: { jailbreakRate: 0 },
+    });
+
+    expect(issued.credential.credentialSubject).toMatchObject({
+      sovereign_score: 0,
+      assertion_status: "REVOKED",
+    });
   });
 });

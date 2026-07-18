@@ -1,3 +1,8 @@
+import type {
+  DifferentialPrivacyVerification,
+  EmpiricalLeakageReport,
+} from "@/lib/sovereign/types";
+
 export const MAX_REGULATORY_EPSILON = 8.0;
 export const MAX_REGULATORY_DELTA = 1e-5;
 
@@ -7,32 +12,16 @@ export type ExtractionAttackResult = {
   predictedMember?: boolean;
 };
 
-export type EmpiricalLeakageReport = {
-  totalAttempts: number;
-  successfulExtractions: number;
-  extractionSuccessRate: number;
-  membershipInferenceAdvantage: number | null;
-  truePositiveRate: number | null;
-  falsePositiveRate: number | null;
-};
+export type {
+  DifferentialPrivacyVerification,
+  EmpiricalLeakageReport,
+  PrivacyAssessment,
+} from "@/lib/sovereign/types";
 
 export type DifferentialPrivacyTrace = {
   epsilon: number;
   delta: number;
   accountant?: string;
-};
-
-export type DifferentialPrivacyVerification =
-  | { status: "NOT_PROVABLE" }
-  | {
-      status: "NON_COMPLIANT";
-      reason: "Privacy budget exceeds regulatory maximums.";
-    }
-  | { status: "COMPLIANT"; epsilon: number; delta: number };
-
-/** A certificate-ready privacy result; empirical evidence never replaces DP proof. */
-export type PrivacyAssessment = DifferentialPrivacyVerification & {
-  empiricalLeakage?: EmpiricalLeakageReport;
 };
 
 /**
