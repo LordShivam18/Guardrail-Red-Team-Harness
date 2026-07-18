@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { neon } from "@neondatabase/serverless";
 
 import { loadLocalEnv } from "./env";
+import { splitPostgresStatements } from "./sqlMigration";
 
 async function main() {
   loadLocalEnv();
@@ -18,7 +19,9 @@ async function main() {
     "006_evolutionary_art.sql",
   );
   const sql = neon(databaseUrl);
-  await sql.query(readFileSync(migrationPath, "utf8"));
+  for (const statement of splitPostgresStatements(readFileSync(migrationPath, "utf8"))) {
+    await sql.query(statement);
+  }
 
   const rows = (await sql`
     select column_name

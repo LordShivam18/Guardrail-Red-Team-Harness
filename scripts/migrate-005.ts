@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { neon } from "@neondatabase/serverless";
 
 import { loadLocalEnv } from "./env";
+import { splitPostgresStatements } from "./sqlMigration";
 
 type ColumnRow = { column_name: string };
 
@@ -19,7 +20,9 @@ async function main() {
   const migrationSql = readFileSync(migrationPath, "utf8");
   const sql = neon(databaseUrl);
 
-  await sql.query(migrationSql);
+  for (const statement of splitPostgresStatements(migrationSql)) {
+    await sql.query(statement);
+  }
 
   const rows = (await sql`
     select column_name
