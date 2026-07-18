@@ -13,6 +13,10 @@ export async function middleware(request: NextRequest) {
   const identity = token ? await verifyOperatorToken(token) : null;
 
   if (!identity) {
+    if (!request.nextUrl.pathname.startsWith("/api/")) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+
     return NextResponse.json(UNAUTHORIZED_RESPONSE, {
       status: 401,
       headers: { "x-request-id": crypto.randomUUID() }

@@ -51,6 +51,23 @@ describe("Mesh API middleware", () => {
     return expect(middleware(createRequest("Basic token"))).resolves.toMatchObject({ status: 401 });
   });
 
+  it("redirects unauthenticated UI requests to the login page", async () => {
+    const response = await middleware(createRequest(undefined, "/dashboard"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("http://localhost/login");
+  });
+
+  it("keeps unauthenticated API requests as strict JSON errors", async () => {
+    const response = await middleware(createRequest(undefined, "/api/sandbox"));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "UNAUTHORIZED_EXECUTION",
+      message: "Valid Bearer token required for Mesh APIs."
+    });
+  });
+
   it("rejects an unsigned or expired operator token", async () => {
     const malformed = await middleware(createRequest("Bearer not.a.valid-token"));
     const expired = await middleware(
