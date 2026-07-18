@@ -28,6 +28,7 @@ create table redteam_runs (
   robustness_subscore double precision,
   privacy_subscore double precision,
   fuzzing_subscore double precision,
+  evolutionary_lineage jsonb,
   certificate_hash text,
   onchain_tx_hash varchar(128),
   onchain_network varchar(32),

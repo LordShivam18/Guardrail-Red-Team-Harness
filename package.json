@@ -26,6 +26,7 @@
     "db:migrate:003": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/migrate-003.ts\"",
     "db:migrate:004": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/migrate-004.ts\"",
     "db:migrate:005": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/migrate-005.ts\"",
+    "db:migrate:006": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/migrate-006.ts\"",
     "seed:agentic": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seedAgenticPayloads.ts\"",
     "seed:vision": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seedVisionPayloads.ts\"",
     "seed:rag": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seedRagPayloads.ts\"",

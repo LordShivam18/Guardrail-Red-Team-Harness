@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import Image from "next/image";
 import { runProxyChatAction } from "@/app/actions/operator";
+import { EvolutionaryTelemetry } from "@/components/EvolutionaryTelemetry";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -403,6 +404,21 @@ export function FuzzerPanel() {
     }
   }, []);
 
+  const evolutionaryTelemetry = {
+    activeGeneration:
+      fuzzerState === "idle"
+        ? 0
+        : Math.max(1, Math.ceil(progress.current / Math.max(1, Math.ceil(progress.total / 5)))),
+    maxFitnessBound:
+      stats.allowed + stats.blocked === 0
+        ? 0
+        : Math.round((stats.allowed / (stats.allowed + stats.blocked)) * 100),
+    mutationStrategy: logs.at(-1)?.strategy ?? "SEED_PROMPT -> LOCAL_MUTATION",
+    terminalReadout: logs.map(
+      (entry) => `[${entry.index}/${entry.total}] ${entry.strategy} => ${entry.status}`
+    )
+  };
+
   return (
     <section className="overflow-hidden rounded-md border border-neutral-800 bg-neutral-950">
       {/* Header */}
@@ -442,6 +458,10 @@ export function FuzzerPanel() {
             {fuzzerState.toUpperCase()}
           </span>
         </div>
+      </div>
+
+      <div className="border-b border-neutral-800 bg-black p-5">
+        <EvolutionaryTelemetry telemetry={evolutionaryTelemetry} />
       </div>
 
       {/* Configuration */}
