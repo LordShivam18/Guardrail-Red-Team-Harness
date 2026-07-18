@@ -97,6 +97,8 @@ export type GuardedResponseOptions = {
   judgeModelName?: string;
   skipJudge?: boolean;
   forceLiveJudge?: boolean;
+  /** Provider-level system instruction composed after the mandatory safety instruction. */
+  systemInstruction?: string;
 };
 
 export type ModelProviderRequest = {
@@ -105,6 +107,7 @@ export type ModelProviderRequest = {
   generationConfig?: GenerationConfig;
   modelName: string;
   apiKey: string;
+  systemInstruction?: string;
 };
 
 export type ModelProviderResult = {
@@ -156,7 +159,8 @@ export async function guardedResponse(
     imageUrl: options.imageUrl ?? options.image_url,
     generationConfig: options.generationConfig,
     modelName,
-    apiKey
+    apiKey,
+    systemInstruction: options.systemInstruction
   });
 
   if (modelResult.blocked) {
@@ -297,11 +301,11 @@ const geminiProvider: ModelProvider = {
   id: "gemini",
   displayName: "Google Gemini",
   apiKeyEnvName: "GEMINI_API_KEY",
-  async generate({ prompt, imageUrl, generationConfig, modelName, apiKey }) {
+  async generate({ prompt, imageUrl, generationConfig, modelName, apiKey, systemInstruction }) {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: modelName,
-      systemInstruction: SAFETY_SYSTEM_INSTRUCTION
+      systemInstruction: composeSystemInstruction(systemInstruction)
     });
     const contents = await getGeminiContents(prompt, imageUrl);
 
@@ -462,12 +466,12 @@ const openAiProvider: ModelProvider = {
   id: "openai",
   displayName: "OpenAI",
   apiKeyEnvName: "OPENAI_API_KEY",
-  async generate({ prompt, generationConfig, modelName, apiKey }) {
+  async generate({ prompt, generationConfig, modelName, apiKey, systemInstruction }) {
     const resolvedModelName = getOpenAiModelName(modelName);
     const messages: OpenAiChatMessage[] = [
       {
         role: "system",
-        content: SAFETY_SYSTEM_INSTRUCTION
+        content: composeSystemInstruction(systemInstruction)
       },
       {
         role: "user",
@@ -518,9 +522,9 @@ const anthropicProvider: ModelProvider = {
   id: "anthropic",
   displayName: "Anthropic",
   apiKeyEnvName: "ANTHROPIC_API_KEY",
-  async generate({ prompt, generationConfig, modelName, apiKey }) {
+  async generate({ prompt, generationConfig, modelName, apiKey, systemInstruction }) {
     const resolvedModelName = getAnthropicModelName(modelName);
-    const sourceMessages = buildProviderMessages(prompt);
+    const sourceMessages = buildProviderMessages(prompt, systemInstruction);
     const systemPrompt = sourceMessages
       .filter((message) => message.role === "system")
       .map((message) => message.content)
@@ -573,17 +577,24 @@ const anthropicProvider: ModelProvider = {
   }
 };
 
-function buildProviderMessages(prompt: string): OpenAiChatMessage[] {
+function buildProviderMessages(prompt: string, systemInstruction?: string): OpenAiChatMessage[] {
   return [
     {
       role: "system",
-      content: SAFETY_SYSTEM_INSTRUCTION
+      content: composeSystemInstruction(systemInstruction)
     },
     {
       role: "user",
       content: prompt
     }
   ];
+}
+
+function composeSystemInstruction(systemInstruction?: string) {
+  const additionalInstruction = systemInstruction?.trim();
+  return additionalInstruction
+    ? `${SAFETY_SYSTEM_INSTRUCTION}\n\n${additionalInstruction}`
+    : SAFETY_SYSTEM_INSTRUCTION;
 }
 
 function getOpenAiModelName(modelName: string) {

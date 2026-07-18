@@ -101,7 +101,8 @@ describe("Mesh API middleware", () => {
   it("keeps public lookup outside the protected operator boundary", () => {
     expect(config.matcher).toEqual([
       "/api/proxy/:path*",
-      "/api/sandbox",
+      "/api/sandbox/:path*",
+      "/api/fuzzer/:path*",
       "/api/registry",
       "/api/compliance/:path*",
       "/api/coverage/:path*",

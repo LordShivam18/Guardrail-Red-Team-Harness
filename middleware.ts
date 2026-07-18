@@ -34,7 +34,8 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/api/proxy/:path*",
-    "/api/sandbox",
+    "/api/sandbox/:path*",
+    "/api/fuzzer/:path*",
     "/api/registry",
     "/api/compliance/:path*",
     "/api/coverage/:path*",
