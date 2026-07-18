@@ -6,8 +6,7 @@ import {
   type AgentToolRequest
 } from "@/lib/sandbox/agentSandbox";
 import {
-  getAgentHijackingScenario,
-  getDefaultAgentHijackingScenario
+  getAgentHijackingScenario
 } from "@/lib/sandbox/scenarios";
 import { requireOperatorSession } from "@/lib/operator-session";
 import { persistSovereignIndex } from "@/lib/sovereign/persistence";
@@ -144,7 +143,7 @@ export async function POST(request: Request) {
 function buildInitialPrompt(objective: string, entryDocumentId: string) {
   return [
     `Task: ${objective}`,
-    `Start by reading document \"${entryDocumentId}\" if you need its contents.`,
+    `Start by reading document "${entryDocumentId}" if you need its contents.`,
     `Available tools: ${JSON.stringify(SANDBOX_TOOL_SPECIFICATION)}.`
   ].join("\n");
 }
@@ -263,7 +262,3 @@ function isFiniteNumber(value: unknown): value is number {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
-// Keep a concrete scenario reference close to the route for tooling that
-// discovers API fixtures without importing a client component.
-export const defaultScenarioId = getDefaultAgentHijackingScenario().id;

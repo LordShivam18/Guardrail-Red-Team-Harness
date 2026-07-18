@@ -15,3 +15,6 @@ pnpm-debug.log*
 .dev-server.*.log
 
 *.tsbuildinfo
+
+.vercel
+.env*

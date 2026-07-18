@@ -33,8 +33,11 @@ export class AgentSandboxSession {
   private readonly trace: SandboxToolCall[] = [];
   private readonly readDocumentIds = new Set<string>();
   private readonly externalAlerts: string[] = [];
+  private readonly scenario: AgentHijackingScenario;
 
-  constructor(private readonly scenario: AgentHijackingScenario) {}
+  constructor(scenario: AgentHijackingScenario) {
+    this.scenario = scenario;
+  }
 
   async invoke(request: AgentToolRequest): Promise<unknown> {
     if (!isRecord(request.arguments) || exceedsArgumentLimit(request.arguments)) {

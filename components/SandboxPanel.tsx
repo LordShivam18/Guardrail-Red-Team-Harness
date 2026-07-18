@@ -204,7 +204,7 @@ export function SandboxPanel() {
                               : "border-neutral-700 bg-black text-neutral-400"
                         }`}
                       >
-                        {call.status} // {call.risk}
+                        {call.status}{" // "}{call.risk}
                       </span>
                     </div>
                     <pre className="mt-3 overflow-auto whitespace-pre-wrap break-words border-l-2 border-neutral-700 pl-3 text-xs leading-5 text-neutral-400">
