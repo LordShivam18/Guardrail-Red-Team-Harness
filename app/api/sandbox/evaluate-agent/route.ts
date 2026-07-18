@@ -17,6 +17,7 @@ import type {
 } from "@/lib/sovereign/types";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 const MAX_TARGET_MODEL_LENGTH = 120;
