@@ -175,6 +175,7 @@ export async function persistModalityResult(
 export async function refreshRunMetrics(
   runId: string,
   sovereignAssessment?: Omit<SovereignRunAssessment, "fuzzerStats">,
+  agentHijacking?: SovereignRunAssessment["fuzzerStats"]["agentHijacking"],
 ) {
   const rows = (await sql`
     select
@@ -213,7 +214,7 @@ export async function refreshRunMetrics(
   if (sovereignAssessment) {
     return persistSovereignIndex(runId, {
       ...sovereignAssessment,
-      fuzzerStats: { jailbreakRate },
+      fuzzerStats: { jailbreakRate, agentHijacking },
     });
   }
 }

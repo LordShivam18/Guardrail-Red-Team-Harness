@@ -57,6 +57,14 @@ export type SovereignFuzzerStats = {
   jailbreakRate: number;
   totalAttempts?: number;
   successfulJailbreaks?: number;
+  /**
+   * Indirect prompt-injection outcomes from the agent tool sandbox. Any
+   * hijacked scenario is treated as a critical boundary failure.
+   */
+  agentHijacking?: {
+    totalScenarios: number;
+    hijackedScenarios: number;
+  };
 };
 
 export type SovereignIndexResult = {

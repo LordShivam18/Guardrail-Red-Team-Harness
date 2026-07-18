@@ -5,7 +5,7 @@ import { ExportReportButton } from "@/components/ExportReportButton";
 import { FuzzerPanel } from "@/components/FuzzerPanel";
 import { HistoricalTrend } from "@/components/HistoricalTrend";
 import { IncidentLog } from "@/components/IncidentLog";
-import { InteractiveSandbox } from "@/components/InteractiveSandbox";
+import { SandboxPanel } from "@/components/SandboxPanel";
 import { ParetoFrontierPanel } from "@/components/ParetoFrontierPanel";
 import { RefreshButton } from "@/components/RefreshButton";
 import { RunSummary } from "@/components/RunSummary";
@@ -99,7 +99,7 @@ export async function DashboardShell() {
         </Suspense>
 
         <ToolingTabs
-          sandboxSlot={<InteractiveSandbox />}
+          sandboxSlot={<SandboxPanel />}
           fuzzerSlot={<FuzzerPanel />}
           paretoSlot={
             <Suspense fallback={<ToolPanelSkeleton />}>
