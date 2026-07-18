@@ -1,38 +1,108 @@
 services:
-  web:
+  guardrail-mesh-web:
     build:
       context: .
       dockerfile: Dockerfile
+    image: guardrail-mesh-web:scif
     ports:
       - "3000:3000"
     environment:
       NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to a Postgres URL targeting the db service}
-      REDIS_URL: redis://redis:6379
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-guardrail}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to a URI-safe value}@guardrail-mesh-db:5432/${POSTGRES_DB:-guardrail}"
+      REDIS_URL: "redis://guardrail-mesh-cache:6379"
+      DRIFT_MONITOR_URL: "http://guardrail-mesh-drift:8000"
+      DRIFT_WEBHOOK_SECRET: "${DRIFT_WEBHOOK_SECRET:?Set DRIFT_WEBHOOK_SECRET before starting the mesh}"
     depends_on:
-      - db
-      - redis
+      guardrail-mesh-db:
+        condition: service_healthy
+      guardrail-mesh-cache:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - guardrail-mesh
 
-  db:
-    image: postgres:15-alpine
+  guardrail-mesh-drift:
+    build:
+      context: ./services/drift-monitor
+      dockerfile: Dockerfile
+    image: guardrail-mesh-drift:scif
     environment:
-      POSTGRES_DB: guardrail
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD before running docker compose}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      DRIFT_WEBHOOK_URL: "http://guardrail-mesh-web:3000/api/webhooks/drift"
+      DRIFT_WEBHOOK_SECRET: "${DRIFT_WEBHOOK_SECRET:?Set DRIFT_WEBHOOK_SECRET before starting the mesh}"
+      DRIFT_WEBHOOK_TIMEOUT_SECONDS: "5"
+    depends_on:
+      guardrail-mesh-web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - guardrail-mesh
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
+  guardrail-mesh-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-guardrail}"
+      POSTGRES_USER: "${POSTGRES_USER:-guardrail}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD before starting the mesh}"
     volumes:
-      - redis_data:/data
+      - guardrail_mesh_postgres:/var/lib/postgresql/data
+      - ./supabase/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+      - ./supabase/migrations/001_add_telemetry_columns.sql:/docker-entrypoint-initdb.d/010-telemetry.sql:ro
+      - ./supabase/migrations/002_mesh_zero_days.sql:/docker-entrypoint-initdb.d/020-mesh-zero-days.sql:ro
+      - ./supabase/migrations/003_compliance_engine.sql:/docker-entrypoint-initdb.d/030-compliance.sql:ro
+      - ./supabase/migrations/003_mesh_dataset_versions.sql:/docker-entrypoint-initdb.d/031-mesh-dataset-versions.sql:ro
+      - ./supabase/migrations/004_phase9_modality.sql:/docker-entrypoint-initdb.d/040-phase9-modality.sql:ro
+      - ./supabase/migrations/005_sovereign_index.sql:/docker-entrypoint-initdb.d/050-sovereign-index.sql:ro
+      - ./supabase/migrations/006_evolutionary_art.sql:/docker-entrypoint-initdb.d/060-evolutionary-art.sql:ro
+      - ./supabase/migrations/007_drift_monitoring.sql:/docker-entrypoint-initdb.d/070-drift-monitoring.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - guardrail-mesh
+
+  guardrail-mesh-cache:
+    image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - guardrail_mesh_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - guardrail-mesh
+
+networks:
+  guardrail-mesh:
+    internal: true
 
 volumes:
-  postgres_data:
-  redis_data:
+  guardrail_mesh_postgres:
+  guardrail_mesh_redis:

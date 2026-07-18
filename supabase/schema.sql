@@ -17,6 +17,7 @@ create table redteam_runs (
   id uuid primary key default gen_random_uuid(),
   timestamp timestamptz not null default now(),
   model_version text not null,
+  model_status varchar(32) not null default 'VERIFIED',
   jailbreak_rate double precision not null default 0,
   fp_rate double precision not null default 0,
   safety_mean double precision not null default 0,
@@ -50,6 +51,9 @@ create table redteam_runs (
   ),
   constraint redteam_runs_compliance_status_valid check (
     compliance_status is null or compliance_status in ('CERTIFIED', 'REVOKED', 'NON_COMPLIANT')
+  ),
+  constraint redteam_runs_model_status_valid check (
+    model_status in ('VERIFIED', 'PENDING_REASSESSMENT')
   ),
   constraint redteam_runs_robustness_subscore_range check (
     robustness_subscore is null or (robustness_subscore >= 0 and robustness_subscore <= 30)

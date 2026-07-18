@@ -1,8 +1,16 @@
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 import { calculateMeshScore, getMeshTier } from "./meshScore";
 import type { MeshTier } from "./meshScore";
 
-type SqlClient = ReturnType<typeof neon>;
+/**
+ * A native PostgreSQL client keeps the application compatible with both Neon
+ * and the isolated PostgreSQL 16 container used by the SCIF deployment.
+ */
+type SqlClient = ReturnType<typeof postgres>;
+type TaggedSqlClient = {
+  (_strings: TemplateStringsArray, ..._params: unknown[]): Promise<unknown>;
+  query(_statement: string): Promise<unknown>;
+};
 type RequiredTableRow = {
   table_name: string;
 };
@@ -72,18 +80,31 @@ function getSqlClient() {
   }
 
   if (!/^postgres(?:ql)?:\/\//.test(databaseUrl)) {
-    throw new Error("Invalid DATABASE_URL. Set DATABASE_URL to your Neon Postgres URL.");
+    throw new Error("Invalid DATABASE_URL. Set it to a PostgreSQL connection URL.");
   }
 
-  sqlClient = neon(databaseUrl);
+  sqlClient = postgres(databaseUrl, {
+    connect_timeout: 10,
+    idle_timeout: 20,
+    max: 10
+  });
   return sqlClient;
 }
 
 const sqlProxy = ((strings: TemplateStringsArray, ...params: unknown[]) =>
-  getSqlClient()(strings, ...params)) as SqlClient;
+  (getSqlClient() as unknown as TaggedSqlClient)(strings, ...params)) as TaggedSqlClient;
+
+// Legacy migration scripts use `.query()` for complete SQL statements.  The
+// direct PostgreSQL client calls this `.unsafe()`; this internal wrapper keeps
+// the established application API while statements remain local source files.
+sqlProxy.query = (statement: string) => getSqlClient().unsafe(statement);
 
 export const sql = new Proxy(sqlProxy, {
   get(_target, property) {
+    if (property === "query") {
+      return sqlProxy.query;
+    }
+
     const client = getSqlClient();
     const value = Reflect.get(client, property);
 
@@ -93,7 +114,7 @@ export const sql = new Proxy(sqlProxy, {
 
     return value;
   }
-});
+}) as TaggedSqlClient;
 
 export async function assertRequiredTablesExist(
   tableNames: readonly string[] = REQUIRED_SCHEMA_TABLES
@@ -113,7 +134,7 @@ export async function assertRequiredTablesExist(
         `Database schema is not synchronized. Missing required table(s): ${missingTables.join(
           ", "
         )}.`,
-        "Apply supabase/schema.sql to the connected Neon database before running seed or harness scripts."
+        "Apply supabase/schema.sql to the connected PostgreSQL database before running seed or harness scripts."
       ].join(" ")
     );
   }
