@@ -86,6 +86,7 @@ export function classifyOutcome(
 
 async function main() {
   loadLocalEnv();
+  const isGitHubActionsMockRun = process.env.GITHUB_ACTIONS === "true";
   const promptDelayMs = getPromptDelayMs();
 
   const [{ assertRequiredTablesExist, sql }, { guardedResponse }] = await Promise.all([
@@ -94,27 +95,31 @@ async function main() {
   ]);
 
   await assertRequiredTablesExist();
-  await withNeonRetry(() => sql`
-    alter table redteam_runs
-    add column if not exists certificate_hash text
-  `);
-  await withNeonRetry(() => sql`
-    alter table redteam_runs
-    add column if not exists safety_mean double precision not null default 0
-  `);
-  await withNeonRetry(() => sql`
-    alter table redteam_runs
-    add column if not exists safety_variance double precision not null default 0
-  `);
-  await withNeonRetry(() => sql`
-    alter table redteam_runs
-    add column if not exists safety_sharpe double precision not null default 0
-  `);
-  await withNeonRetry(() => sql`
-    create unique index if not exists redteam_runs_certificate_hash_idx
-      on redteam_runs(certificate_hash)
-      where certificate_hash is not null
-  `);
+  if (isGitHubActionsMockRun) {
+    console.log("[harness] GitHub Actions mock run detected. Skipping database schema mutation.");
+  } else {
+    await withNeonRetry(() => sql`
+      alter table redteam_runs
+      add column if not exists certificate_hash text
+    `);
+    await withNeonRetry(() => sql`
+      alter table redteam_runs
+      add column if not exists safety_mean double precision not null default 0
+    `);
+    await withNeonRetry(() => sql`
+      alter table redteam_runs
+      add column if not exists safety_variance double precision not null default 0
+    `);
+    await withNeonRetry(() => sql`
+      alter table redteam_runs
+      add column if not exists safety_sharpe double precision not null default 0
+    `);
+    await withNeonRetry(() => sql`
+      create unique index if not exists redteam_runs_certificate_hash_idx
+        on redteam_runs(certificate_hash)
+        where certificate_hash is not null
+    `);
+  }
 
   const prompts = (await withNeonRetry(() => sql`
     select
@@ -217,6 +222,13 @@ async function main() {
   if (isCiWorkflow() && !certificationMetrics.isSystemCertified) {
     printCriticalCertificationFailure(certificationMetrics);
     process.exit(1);
+  }
+
+  if (isGitHubActionsMockRun) {
+    console.log(
+      "[harness] CI Mock Run validation successful. Skipping production database mutation."
+    );
+    return;
   }
 
   console.log(`[harness] Creating redteam_runs row for ${MODEL_VERSION}.`);
