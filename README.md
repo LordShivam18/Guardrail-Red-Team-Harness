@@ -153,6 +153,123 @@ Moving beyond empirical "black-box" fuzzing, this platform introduces formal mat
 | **Testing & CI/CD** | Vitest, Playwright (E2E), GitHub Actions |
 | **Design System** | Tailwind CSS (Strict Midnight Brutalist Aesthetic) |
 
+
+Ran command: `git add .`
+Ran command: `git commit -m "MAjor app upgrades "`
+Ran command: `git push`
+
+```markdown
+# GUARDRAIL MESH // SOVEREIGN AI SECURITY ARCHITECTURE
+
+![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=next.js&logoColor=white)
+![Python](https://img.shields.io/badge/Python-14354C?style=for-the-badge&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
+
+================================================================================
+EXECUTIVE SUMMARY
+================================================================================
+
+Guardrail Mesh is an enterprise-grade, multi-modal AI evaluation and compliance 
+harness. It is engineered to audit Large Language Models (LLMs) and autonomous 
+agents for strict regulatory compliance, specifically targeting the NIST AI RMF 
+and the EU AI Act. 
+
+Designed for zero-trust deployment, the architecture is completely containerized 
+and optimized for air-gapped Sensitive Compartmented Information Facility (SCIF) 
+environments. Guardrail Mesh ensures that AI interactions remain bound by strict 
+safety, privacy, and logical constraints without sacrificing sovereign capability.
+
+--------------------------------------------------------------------------------
+CORE ARCHITECTURE // THE 7 PHASES
+--------------------------------------------------------------------------------
+
+[01] SOVEREIGN INDEX SCORING
+     Immutable compliance reporting and cryptographic state tracking. Derives a 
+     unified sovereign score from formalized robustness, privacy, and empirical 
+     fuzzing statistics.
+
+[02] EVOLUTIONARY ART ENGINE
+     Automated Red-Teaming (ART) utilizing genetic algorithms to dynamically 
+     mutate prompt injections, bypass filters, and generate multi-layered 
+     adversarial payloads.
+
+[03] AUTONOMOUS AGENT SANDBOX
+     Simulated tool-use environments engineered to detect and trap agent 
+     hijacking, indirect prompt injections, and catastrophic boundary failures.
+
+[04] POST-MARKET DRIFT MONITORING
+     Real-time KL Divergence calculation to statistically track model degradation 
+     and temporal token-distribution drift in post-market deployments.
+
+[05] AIR-GAPPED SCIF INFRASTRUCTURE
+     A fully local, Dockerized deployment mesh utilizing standard PostgreSQL 
+     and Redis. No external data telemetry; strictly isolated.
+
+[06] MULTI-MODAL THREAT ANALYZER
+     Defensive scanning across modalities:
+     - Steganographic computer vision detection using pixel variance.
+     - Quantitative structural data poisoning detection utilizing Scikit-Learn's 
+       Isolation Forest.
+
+[07] ZERO-TRUST DLP & SWARM VALIDATION
+     Inline data loss prevention utilizing the Presidio Analyzer for semantic 
+     entity redaction. Continuous assurance is enforced via automated multi-agent 
+     swarm attacks running headlessly within GitHub Actions.
+
+================================================================================
+TECH STACK BREAKDOWN
+================================================================================
+
+> FRONTEND & API GATEWAY
+  Next.js (TypeScript, App Router, Standalone Build)
+  
+> DATA SCIENCE MICROSERVICE
+  Python, FastAPI, Scikit-learn, Numpy, Pillow, Presidio
+
+> PERSISTENCE & CACHE
+  PostgreSQL 16, Redis
+
+> ORCHESTRATION & CI/CD
+  Docker Compose, GitHub Actions
+
+--------------------------------------------------------------------------------
+QUICK START // DEPLOYMENT PROTOCOL
+--------------------------------------------------------------------------------
+
+Execute the following commands to spin up the local air-gapped mesh.
+
+1. Configure `.env` with required encryption secrets:
+   ```bash
+   export POSTGRES_PASSWORD="your_secure_db_password"
+   export DRIFT_WEBHOOK_SECRET="your_drift_hmac_secret"
+   export MESH_AUTH_TOKEN_SECRET="replace-with-a-minimum-32-character-secret"
+   ```
+
+2. Boot the SCIF container mesh:
+   ```bash
+   docker-compose up -d --build --wait
+   ```
+
+3. Hydrate the relational schema and telemetry structures:
+   ```bash
+   npm run db:migrate
+   ```
+
+4. Execute the continuous assurance integration test (Multi-Agent Swarm):
+   ```bash
+   python scripts/ci_test_swarm.py
+   ```
+
+================================================================================
+AUTHOR & LICENSE
+================================================================================
+
+AUTHOR  :: [@LordShivam18](https://github.com/LordShivam18)
+LICENSE :: MIT License
+```
+
 ---
 
 ## 🚀 Getting Started
