@@ -8,10 +8,14 @@ services:
       - "3000:3000"
     environment:
       NODE_ENV: production
-      DATABASE_URL: "postgresql://${POSTGRES_USER:-guardrail}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to a URI-safe value}@guardrail-mesh-db:5432/${POSTGRES_DB:-guardrail}"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-guardrail}:${POSTGRES_PASSWORD:-postgres_ci_password_123}@guardrail-mesh-db:5432/${POSTGRES_DB:-guardrail}"
       REDIS_URL: "redis://guardrail-mesh-cache:6379"
       DRIFT_MONITOR_URL: "http://guardrail-mesh-drift:8000"
-      DRIFT_WEBHOOK_SECRET: "${DRIFT_WEBHOOK_SECRET:?Set DRIFT_WEBHOOK_SECRET before starting the mesh}"
+      DRIFT_WEBHOOK_SECRET: "${DRIFT_WEBHOOK_SECRET:-ci_drift_secret_12345}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      MESH_AUTH_TOKEN_SECRET: "${MESH_AUTH_TOKEN_SECRET:-ci_mesh_auth_secret_must_be_32_chars}"
+      GITHUB_ACTIONS: "${GITHUB_ACTIONS:-false}"
     depends_on:
       guardrail-mesh-db:
         condition: service_healthy
@@ -38,8 +42,9 @@ services:
     image: guardrail-mesh-drift:scif
     environment:
       DRIFT_WEBHOOK_URL: "http://guardrail-mesh-web:3000/api/webhooks/drift"
-      DRIFT_WEBHOOK_SECRET: "${DRIFT_WEBHOOK_SECRET:?Set DRIFT_WEBHOOK_SECRET before starting the mesh}"
+      DRIFT_WEBHOOK_SECRET: "${DRIFT_WEBHOOK_SECRET:-ci_drift_secret_12345}"
       DRIFT_WEBHOOK_TIMEOUT_SECONDS: "5"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
     depends_on:
       guardrail-mesh-web:
         condition: service_healthy
@@ -62,7 +67,7 @@ services:
     environment:
       POSTGRES_DB: "${POSTGRES_DB:-guardrail}"
       POSTGRES_USER: "${POSTGRES_USER:-guardrail}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD before starting the mesh}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres_ci_password_123}"
     volumes:
       - guardrail_mesh_postgres:/var/lib/postgresql/data
       - ./supabase/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
