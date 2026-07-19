@@ -13,11 +13,25 @@ import { ToolingTabs } from "@/components/ToolingTabs";
 import { WhiteboxDiagnosticsPanel } from "@/components/WhiteboxDiagnosticsPanel";
 import { getLatestRunSummary } from "@/lib/redteamDashboard";
 
+async function StatusBanner() {
+  const summary = await getLatestRunSummary();
+  if (!summary || summary.modelStatus !== "PENDING_REASSESSMENT") return null;
+
+  return (
+    <div className="mb-6 flex w-full animate-pulse items-center justify-center border-y border-red-600 bg-red-950/80 px-4 py-3 shadow-[0_0_20px_rgba(220,38,38,0.4)] sm:rounded-md sm:border-x">
+      <span className="font-mono text-sm font-bold uppercase tracking-wide text-red-400">
+        ⚠️ CRITICAL: Statistical Drift Detected. Model locked pending operator reassessment.
+      </span>
+    </div>
+  );
+}
+
 async function CertificateBadge() {
   const summary = await getLatestRunSummary();
-  if (!summary || !summary.certificateHash) return null;
+  if (!summary || summary.modelStatus === "PENDING_REASSESSMENT" || !summary.certificateHash) return null;
+
   return (
-    <span className="inline-flex w-fit items-center gap-2 rounded-none border border-neutral-700 bg-neutral-900 px-3 py-1 font-mono text-xs uppercase text-neutral-300">
+    <span className="inline-flex w-fit items-center gap-2 rounded-none border border-green-700/50 bg-green-900/20 px-3 py-1 font-mono text-xs uppercase text-green-400">
       VERIFIED ({summary.certificateHash.slice(0, 8)})
     </span>
   );
@@ -62,6 +76,9 @@ export async function DashboardShell() {
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="mx-auto flex w-full max-w-7xl flex-col gap-7 px-5 py-8 sm:px-6 lg:px-8">
+        <Suspense fallback={null}>
+          <StatusBanner />
+        </Suspense>
         <header className="flex flex-col gap-5 border-b border-neutral-800 pb-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
             <p className="font-mono text-xs font-medium uppercase tracking-[0.24em] text-neutral-500">

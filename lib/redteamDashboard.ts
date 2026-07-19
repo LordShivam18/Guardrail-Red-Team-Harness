@@ -13,6 +13,7 @@ type RunRow = {
   safety_sharpe?: number;
   max_compute_shift?: number;
   certificate_hash?: string;
+  model_status: string;
 };
 
 type ResultRow = {
@@ -48,6 +49,7 @@ export type RunSummaryData = {
   safetySharpe?: number;
   maxComputeShift?: number;
   certificateHash?: string;
+  modelStatus: string;
 };
 
 export type IncidentLogRow = {
@@ -126,6 +128,7 @@ async function getLatestRun(): Promise<RunRow | null> {
         id,
         timestamp,
         model_version,
+        model_status,
         jailbreak_rate,
         fp_rate,
         coalesce(safety_mean, 0) as safety_mean,
@@ -153,6 +156,7 @@ async function getLatestRun(): Promise<RunRow | null> {
           id,
           timestamp,
           model_version,
+          'VERIFIED' as model_status,
           jailbreak_rate,
           fp_rate,
           coalesce(safety_mean, 0) as safety_mean,
@@ -201,7 +205,8 @@ export async function getLatestRunSummary(): Promise<RunSummaryData | null> {
     safetyVariance: latestRun.safety_variance,
     safetySharpe: latestRun.safety_sharpe,
     maxComputeShift: latestRun.max_compute_shift,
-    certificateHash: latestRun.certificate_hash
+    certificateHash: latestRun.certificate_hash,
+    modelStatus: latestRun.model_status
   };
 }
 
