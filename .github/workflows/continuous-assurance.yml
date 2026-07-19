@@ -54,9 +54,6 @@ jobs:
       - name: Install Node Dependencies
         run: npm ci
 
-      - name: Hydrate Database Schema
-        run: npm run db:migrate
-
       - name: Install Python Dependencies
         run: pip install PyJWT requests
 
