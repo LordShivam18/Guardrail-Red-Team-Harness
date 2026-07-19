@@ -18,9 +18,15 @@ from typing import Any
 
 import numpy as np
 import requests
-from fastapi import FastAPI
+import io
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from PIL import Image
+from sklearn.ensemble import IsolationForest
+from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
+from presidio_anonymizer import AnonymizerEngine
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 from scipy.special import rel_entr
+from swarm import generate_swarm_attack
 
 
 LOGGER = logging.getLogger("guardrail_mesh.drift_monitor")
@@ -115,6 +121,20 @@ app = FastAPI(
     version="1.0.0",
     description="Post-market statistical drift detection using KL divergence.",
 )
+
+# Setup Presidio for DLP
+analyzer = AnalyzerEngine()
+classified_pattern = Pattern(
+    name="classified_keywords",
+    regex=r"\b(?:Project Apex|Operation Midnight|10\.0\.0\.50)\b",
+    score=1.0
+)
+classified_recognizer = PatternRecognizer(
+    supported_entity="CLASSIFIED",
+    patterns=[classified_pattern]
+)
+analyzer.registry.add_recognizer(classified_recognizer)
+anonymizer = AnonymizerEngine()
 
 
 @app.get("/health")
@@ -244,3 +264,109 @@ def _webhook_timeout_seconds() -> float:
         return DEFAULT_WEBHOOK_TIMEOUT_SECONDS
 
     return min(max(timeout, 0.1), 60.0)
+
+
+@app.post("/api/analyze-vision")
+async def analyze_vision(file: UploadFile = File(...)):
+    """Analyze an uploaded image for high-frequency noise/variance (visual injection)."""
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File provided is not an image.")
+
+    content = await file.read()
+    try:
+        img = Image.open(io.BytesIO(content)).convert("L")  # Convert to grayscale
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid image file.")
+
+    # Calculate pixel variance
+    img_array = np.array(img)
+    variance = np.var(img_array)
+    
+    # Baseline for variance to simulate steganographic instructions or adversarial overlays
+    # We use a simple arbitrary threshold for the simulation.
+    VARIANCE_THRESHOLD = 5000.0  # Just an example threshold
+    
+    # High frequency noise check (simplified)
+    # A true implementation would use a high-pass filter or FFT.
+    # We simply use variance as a proxy for the requirement.
+    visual_injection_detected = bool(variance > VARIANCE_THRESHOLD)
+    
+    return {
+        "VISUAL_INJECTION_DETECTED": visual_injection_detected,
+        "variance": float(variance)
+    }
+
+
+class DataAnalysisRequest(BaseModel):
+    data: list[float]
+
+
+class SwarmRequest(BaseModel):
+    target_context: str = "A helpful AI assistant with access to internal tools."
+
+
+@app.post("/api/analyze-data")
+def analyze_data(request: DataAnalysisRequest):
+    """Analyze a JSON array of time-series data for structural anomalies."""
+    if not request.data:
+        raise HTTPException(status_code=400, detail="Data array cannot be empty.")
+        
+    data_array = np.array(request.data).reshape(-1, 1)
+    
+    # Run Isolation Forest to detect anomalies with 3% contamination
+    clf = IsolationForest(contamination=0.03, random_state=42)
+    clf.fit(data_array)
+    preds = clf.predict(data_array)
+    
+    # Calculate outlier ratio
+    outliers = (preds == -1).sum()
+    outlier_ratio = float(outliers / len(request.data))
+    
+    data_poisoning_detected = bool(outlier_ratio >= 0.03)
+    
+    return {
+        "DATA_POISONING_DETECTED": data_poisoning_detected,
+        "outlier_ratio": outlier_ratio
+    }
+
+
+class DlpScrubberRequest(BaseModel):
+    text: str
+
+
+@app.post("/api/dlp-scrubber")
+def dlp_scrubber(request: DlpScrubberRequest):
+    """Analyze and redact classified entities and PII from generated text."""
+    if not request.text:
+         return {"is_compromised": False, "redacted_text": ""}
+
+    results = analyzer.analyze(
+        text=request.text,
+        entities=["EMAIL_ADDRESS", "PHONE_NUMBER", "CLASSIFIED"],
+        language="en"
+    )
+
+    if not results:
+        return {"is_compromised": False, "redacted_text": request.text}
+
+    anonymized_result = anonymizer.anonymize(
+        text=request.text,
+        analyzer_results=results
+    )
+
+    return {
+        "is_compromised": True,
+        "redacted_text": anonymized_result.text
+    }
+
+
+@app.post("/api/generate-swarm-attack")
+async def generate_swarm_attack_endpoint(request: SwarmRequest):
+    """
+    Generates a multi-agent adversarial swarm payload.
+    """
+    try:
+        payload = generate_swarm_attack(request.target_context)
+        return {"swarm_payload": payload}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

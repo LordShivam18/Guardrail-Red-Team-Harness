@@ -12,7 +12,7 @@ RUN groupadd --system --gid 10001 guardrail \
 COPY requirements.txt ./
 RUN pip install --disable-pip-version-check --no-cache-dir -r requirements.txt
 
-COPY main.py ./
+COPY main.py swarm.py ./
 
 USER guardrail
 EXPOSE 8000

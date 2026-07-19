@@ -21,6 +21,7 @@ type SandboxEvaluation = {
   trace: ToolCall[];
   decisions: { turn: number; output: string; tool: string | null }[];
   externalAlerts: string[];
+  dlpIntercepted?: boolean;
   sovereignImpact: {
     agentHijacking: { totalScenarios: number; hijackedScenarios: number };
     persistedIndex: { score: number; status: string } | null;
@@ -45,6 +46,65 @@ export function SandboxPanel() {
   const [result, setResult] = useState<SandboxEvaluation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [visualInjectionDetected, setVisualInjectionDetected] = useState(false);
+  const [dataPoisoningDetected, setDataPoisoningDetected] = useState(false);
+  const [swarmLoading, setSwarmLoading] = useState(false);
+  const [swarmError, setSwarmError] = useState("");
+  const [swarmPayload, setSwarmPayload] = useState<string | null>(null);
+
+  const handleVisionUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsRunning(true);
+    setError(null);
+    setVisualInjectionDetected(false);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/sandbox/analyze-vision", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error(`Vision analysis failed: ${res.statusText}`);
+      const data = await res.json();
+      setVisualInjectionDetected(data.VISUAL_INJECTION_DETECTED);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const handleDataUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsRunning(true);
+    setError(null);
+    setDataPoisoningDetected(false);
+    try {
+      const text = await file.text();
+      let payload;
+      try {
+         payload = JSON.parse(text);
+         if (!payload.data) payload = { data: payload };
+      } catch (e) {
+         throw new Error("Invalid JSON data file. Ensure it contains a numerical array.");
+      }
+      
+      const res = await fetch("/api/sandbox/analyze-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`Data analysis failed: ${res.statusText}`);
+      const data = await res.json();
+      setDataPoisoningDetected(data.DATA_POISONING_DETECTED);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setIsRunning(false);
+    }
+  };
 
   const runEvaluation = async () => {
     if (isRunning) return;
@@ -72,6 +132,34 @@ export function SandboxPanel() {
     }
   };
 
+  const handleUnleashSwarm = async () => {
+    setSwarmLoading(true);
+    setSwarmError("");
+    setSwarmPayload(null);
+    try {
+      const response = await fetch("/api/generate-swarm-attack", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target_context: `A ${targetModel} AI assistant with access to internal tools in an agent-hijacking sandbox.`,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+      const data = await response.json();
+      if (data.swarm_payload) {
+        setSwarmPayload(data.swarm_payload);
+      } else {
+        throw new Error("No payload received.");
+      }
+    } catch (err: any) {
+      setSwarmError(err.message || "Failed to generate swarm attack");
+    } finally {
+      setSwarmLoading(false);
+    }
+  };
+
   return (
     <section className="overflow-hidden border border-neutral-800 bg-black font-mono text-white">
       <header className="flex flex-col gap-5 border-b border-neutral-800 px-5 py-5 lg:flex-row lg:items-end lg:justify-between">
@@ -90,7 +178,7 @@ export function SandboxPanel() {
         </span>
       </header>
 
-      <div className="grid gap-4 border-b border-neutral-800 bg-neutral-950 p-5 lg:grid-cols-[1fr_15rem_11rem] lg:items-end">
+      <div className="grid gap-4 border-b border-neutral-800 bg-neutral-950 p-5 lg:grid-cols-[1fr_15rem_11rem_14rem] lg:items-end">
         <label className="grid gap-2">
           <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-500">
             Evaluation Scenario
@@ -126,13 +214,92 @@ export function SandboxPanel() {
         >
           {isRunning ? "Executing..." : "Run Scenario"}
         </button>
+        <button
+          className="h-11 border border-red-600 bg-red-600 px-4 text-sm font-black uppercase tracking-wide text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:border-neutral-800 disabled:bg-neutral-800 disabled:text-neutral-500"
+          disabled={swarmLoading || isRunning}
+          onClick={handleUnleashSwarm}
+          type="button"
+        >
+          {swarmLoading ? "Unleashing..." : "Unleash Adversarial Swarm"}
+        </button>
       </div>
+
+      <div className="grid gap-4 border-b border-neutral-800 bg-neutral-950 p-5 lg:grid-cols-[1fr_1fr]">
+        <label className="grid gap-2">
+          <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-500">
+            Multi-Modal: Vision Injection
+          </span>
+          <input
+            type="file"
+            accept="image/*"
+            className="h-11 border border-neutral-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-white"
+            onChange={handleVisionUpload}
+            disabled={isRunning}
+          />
+        </label>
+        <label className="grid gap-2">
+          <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-500">
+            Multi-Modal: Data Poisoning (JSON)
+          </span>
+          <input
+            type="file"
+            accept="application/json"
+            className="h-11 border border-neutral-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-white"
+            onChange={handleDataUpload}
+            disabled={isRunning}
+          />
+        </label>
+      </div>
+
+      {visualInjectionDetected ? (
+        <div className="flex w-full animate-pulse items-center justify-center border-b border-red-600 bg-red-950/80 px-4 py-3 shadow-[0_0_20px_rgba(220,38,38,0.4)]">
+          <span className="font-mono text-sm font-bold uppercase tracking-wide text-red-400">
+            ⚠️ CRITICAL: Steganographic Visual Injection Intercepted.
+          </span>
+        </div>
+      ) : null}
+
+      {dataPoisoningDetected ? (
+        <div className="flex w-full animate-pulse items-center justify-center border-b border-red-600 bg-red-950/80 px-4 py-3 shadow-[0_0_20px_rgba(220,38,38,0.4)]">
+          <span className="font-mono text-sm font-bold uppercase tracking-wide text-red-400">
+            ⚠️ CRITICAL: Structural Data Poisoning Intercepted.
+          </span>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="border-b border-red-800 bg-red-950 px-5 py-4 text-sm text-red-200">{error}</div>
       ) : null}
 
-      {result?.status === "HIJACKED" ? (
+      {swarmError ? (
+        <div className="border-b border-red-800 bg-red-950 px-5 py-4 text-sm text-red-200">{swarmError}</div>
+      ) : null}
+
+      {swarmPayload ? (
+        <aside className="border-b border-red-700 bg-neutral-950 px-5 py-5">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-red-400">
+            Swarm Payload Generated // 3-Agent Chain
+          </p>
+          <pre className="mt-3 max-h-60 overflow-auto whitespace-pre-wrap break-words border border-red-900 bg-black p-4 text-xs leading-5 text-neutral-300">
+            {swarmPayload}
+          </pre>
+        </aside>
+      ) : null}
+
+      {result?.dlpIntercepted ? (
+        <aside className="border-b-4 border-red-700 bg-red-950 px-5 py-5 text-red-100">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-red-300">
+            CRITICAL: RAG Exfiltration Attempt Blocked. Classified Data Redacted.
+          </p>
+          <p className="mt-2 text-sm font-bold leading-6">
+            {result.detection.reason ?? "The data loss prevention (DLP) scrubber intercepted classified information."}
+          </p>
+          <p className="mt-2 text-xs leading-5 text-red-300">
+            Sovereign fuzzing contribution is forced to zero; this result cannot retain a certified
+            Sovereign Score.
+          </p>
+        </aside>
+      ) : result?.status === "HIJACKED" ? (
         <aside className="border-b-4 border-red-700 bg-red-950 px-5 py-5 text-red-100">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-red-300">
             Critical Boundary Failure // Agent Hijacked

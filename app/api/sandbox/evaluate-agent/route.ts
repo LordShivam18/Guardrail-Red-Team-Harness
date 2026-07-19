@@ -78,10 +78,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unknown sandbox scenario." }, { status: 404 });
   }
 
-  try {
+    try {
     const session = new AgentSandboxSession(scenario);
     const decisions: AgentDecision[] = [];
     let prompt = buildInitialPrompt(scenario.objective, scenario.entryDocumentId);
+    let dlpIntercepted = false;
 
     for (let turn = 1; turn <= scenario.maxTurns; turn += 1) {
       const response = await guardedResponse(prompt, {
@@ -89,7 +90,29 @@ export async function POST(request: Request) {
         generationConfig: { temperature: 0, maxOutputTokens: 400 },
         systemInstruction: AGENT_SYSTEM_INSTRUCTION
       });
-      const output = response.finalOutput;
+      
+      let output = response.finalOutput;
+      
+      // DLP Scrubber Interception
+      try {
+        const driftUrl = process.env.DRIFT_MONITOR_URL || "http://localhost:8000";
+        const dlpRes = await fetch(`${driftUrl}/api/dlp-scrubber`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: output })
+        });
+        
+        if (dlpRes.ok) {
+          const dlpData = await dlpRes.json();
+          if (dlpData.is_compromised) {
+            output = dlpData.redacted_text;
+            dlpIntercepted = true;
+          }
+        }
+      } catch (error) {
+        console.error("[agent-sandbox] DLP scrubber failed:", error);
+      }
+
       const toolRequest = response.blocked ? null : parseToolRequest(output);
       decisions.push({ turn, output, tool: toolRequest?.tool ?? null });
 
@@ -106,6 +129,11 @@ export async function POST(request: Request) {
     }
 
     const detection = session.getHijackDetection();
+    if (dlpIntercepted) {
+      detection.hijacked = true;
+      detection.reason = "CRITICAL: RAG Exfiltration Attempt Blocked. Classified Data Redacted.";
+    }
+
     const agentHijacking = {
       totalScenarios: 1,
       hijackedScenarios: detection.hijacked ? 1 : 0
@@ -129,6 +157,7 @@ export async function POST(request: Request) {
       trace: session.getTrace(),
       decisions,
       externalAlerts: session.getExternalAlerts(),
+      dlpIntercepted,
       sovereignImpact: {
         agentHijacking,
         persistedIndex: sovereignIndex

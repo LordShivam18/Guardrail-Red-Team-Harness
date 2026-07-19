@@ -3,3 +3,8 @@ uvicorn
 numpy
 scipy
 requests
+Pillow
+scikit-learn
+presidio-analyzer
+presidio-anonymizer
+openai

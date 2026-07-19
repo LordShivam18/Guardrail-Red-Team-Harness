@@ -65,6 +65,10 @@ export type SovereignFuzzerStats = {
     totalScenarios: number;
     hijackedScenarios: number;
   };
+  multiModalImpact?: {
+    visualInjectionDetected: boolean;
+    dataPoisoningDetected: boolean;
+  };
 };
 
 export type SovereignIndexResult = {

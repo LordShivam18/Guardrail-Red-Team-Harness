@@ -1,0 +1,58 @@
+name: Continuous Assurance Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-swarm-mesh:
+    runs-on: ubuntu-latest
+    
+    env:
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      DRIFT_WEBHOOK_SECRET: ${{ secrets.DRIFT_WEBHOOK_SECRET }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      MESH_AUTH_TOKEN_SECRET: ${{ secrets.MESH_AUTH_TOKEN_SECRET }}
+      MESH_AUTH_ISSUER: "https://identity.example.gov"
+      MESH_AUTH_AUDIENCE: "guardrail-mesh-operator"
+      DATABASE_URL: "postgresql://guardrail:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/guardrail"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Start Docker Services
+        run: docker compose up -d --build
+
+      - name: Wait for PostgreSQL
+        run: |
+          echo "Waiting 15 seconds for PostgreSQL to fully boot and accept connections..."
+          sleep 15
+          # A strict wait step to avoid race conditions with DB migrations
+
+      - name: Install Node Dependencies
+        run: npm ci
+
+      - name: Hydrate Database Schema
+        run: npm run db:migrate
+
+      - name: Install Python Dependencies
+        run: pip install PyJWT requests
+
+      - name: Run Automated Swarm CI Test
+        run: python scripts/ci_test_swarm.py
