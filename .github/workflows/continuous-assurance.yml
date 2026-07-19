@@ -38,6 +38,12 @@ jobs:
 
       - name: Start Docker Services
         run: docker compose up -d --build
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          DRIFT_WEBHOOK_SECRET: ${{ secrets.DRIFT_WEBHOOK_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MESH_AUTH_TOKEN_SECRET: ${{ secrets.MESH_AUTH_TOKEN_SECRET }}
 
       - name: Wait for PostgreSQL
         run: |
