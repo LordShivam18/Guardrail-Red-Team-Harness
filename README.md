@@ -267,7 +267,7 @@ Execute the following commands to spin up the local air-gapped mesh.
 
 
 
-## ## AUTHOR & LICENSE
+##  AUTHOR & LICENSE
 
 
 AUTHOR  :: [@LordShivam18](https://github.com/LordShivam18)
