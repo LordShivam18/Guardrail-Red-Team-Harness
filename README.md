@@ -262,9 +262,13 @@ Execute the following commands to spin up the local air-gapped mesh.
    python scripts/ci_test_swarm.py
    ```
 
-================================================================================
-AUTHOR & LICENSE
-================================================================================
+
+
+
+
+
+## ## AUTHOR & LICENSE
+
 
 AUTHOR  :: [@LordShivam18](https://github.com/LordShivam18)
 LICENSE :: MIT License
