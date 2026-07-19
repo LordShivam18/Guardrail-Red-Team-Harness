@@ -7,7 +7,7 @@ import jwt
 
 # Environment Variables
 BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")
-SECRET = os.getenv("MESH_AUTH_TOKEN_SECRET")
+SECRET = os.getenv("MESH_AUTH_TOKEN_SECRET") or "ci_mesh_auth_secret_must_be_32_chars"
 ISSUER = os.getenv("MESH_AUTH_ISSUER", "https://identity.example.gov")
 AUDIENCE = os.getenv("MESH_AUTH_AUDIENCE", "guardrail-mesh-operator")
 
