@@ -20,7 +20,6 @@ jobs:
       MESH_AUTH_TOKEN_SECRET: ${{ secrets.MESH_AUTH_TOKEN_SECRET }}
       MESH_AUTH_ISSUER: "https://identity.example.gov"
       MESH_AUTH_AUDIENCE: "guardrail-mesh-operator"
-      DATABASE_URL: "postgresql://guardrail:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/guardrail"
 
     steps:
       - name: Checkout code
@@ -44,6 +43,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MESH_AUTH_TOKEN_SECRET: ${{ secrets.MESH_AUTH_TOKEN_SECRET }}
+          DATABASE_URL: "postgresql://guardrail:${{ secrets.POSTGRES_PASSWORD }}@guardrail-mesh-db:5432/guardrail"
 
       - name: Wait for PostgreSQL
         run: |
@@ -55,7 +55,9 @@ jobs:
         run: npm ci
 
       - name: Hydrate Database Schema
-        run: npm run db:migrate || true
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: "postgresql://guardrail:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/guardrail"
 
       - name: Restart Web Container
         run: docker compose restart guardrail-mesh-web || true
