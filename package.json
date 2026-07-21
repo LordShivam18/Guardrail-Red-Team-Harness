@@ -23,6 +23,7 @@
     "seed:history": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/seedHistoricalRuns.ts\"",
     "export:dataset": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/export-mesh-dataset.ts\"",
     "migration:003": "tsx scripts/run-migration-003.ts",
+    "db:migrate": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/checkSchema.ts\"",
     "db:migrate:003": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/migrate-003.ts\"",
     "db:migrate:004": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/migrate-004.ts\"",
     "db:migrate:005": "node \"./node_modules/tsx/dist/cli.mjs\" \"./scripts/migrate-005.ts\"",

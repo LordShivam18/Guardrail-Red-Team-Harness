@@ -54,8 +54,18 @@ jobs:
       - name: Install Node Dependencies
         run: npm ci
 
+      - name: Hydrate Database Schema
+        run: npm run db:migrate || true
+
+      - name: Restart Web Container
+        run: docker compose restart guardrail-mesh-web || true
+
       - name: Install Python Dependencies
         run: pip install PyJWT requests
 
       - name: Run Automated Swarm CI Test
         run: python scripts/ci_test_swarm.py
+
+      - name: Print Docker Logs on Failure
+        if: failure()
+        run: docker compose logs

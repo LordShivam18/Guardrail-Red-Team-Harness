@@ -33,10 +33,34 @@ def generate_operator_token():
     token = jwt.encode(payload, SECRET, algorithm="HS256")
     return token
 
+def wait_for_server(url, max_retries=15, delay=3):
+    """Polls the server until it returns HTTP 200 or max_retries is reached."""
+    print(f"Waiting for server at {url} to be ready...")
+    endpoints = ["/api/health", ""]
+    
+    for attempt in range(1, max_retries + 1):
+        for endpoint in endpoints:
+            target = f"{url.rstrip('/')}{endpoint}"
+            try:
+                resp = requests.get(target, timeout=5)
+                if resp.status_code == 200:
+                    print(f"[OK] Server responded with HTTP 200 at {target} (attempt {attempt}/{max_retries})")
+                    return True
+            except requests.RequestException:
+                pass
+        print(f"Attempt {attempt}/{max_retries}: Server not ready yet, retrying in {delay}s...")
+        time.sleep(delay)
+
+    print(f"ERROR: Server at {url} did not respond with HTTP 200 after {max_retries} attempts.")
+    sys.exit(1)
+
 def test_continuous_assurance():
     print("========================================")
     print(" MESH CI: AUTOMATED SWARM TEST RUNNER")
     print("========================================")
+    
+    # Wait for server readiness
+    wait_for_server(BASE_URL, max_retries=15, delay=3)
     
     # 1. Obtain Bearer Token
     token = generate_operator_token()
