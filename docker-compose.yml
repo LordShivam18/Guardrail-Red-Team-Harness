@@ -64,6 +64,8 @@ services:
 
   guardrail-mesh-db:
     image: postgres:16-alpine
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_DB: "${POSTGRES_DB:-guardrail}"
       POSTGRES_USER: "${POSTGRES_USER:-guardrail}"
@@ -80,10 +82,10 @@ services:
       - ./supabase/migrations/006_evolutionary_art.sql:/docker-entrypoint-initdb.d/060-evolutionary-art.sql:ro
       - ./supabase/migrations/007_drift_monitoring.sql:/docker-entrypoint-initdb.d/070-drift-monitoring.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      test: ["CMD-SHELL", "pg_isready -U guardrail -d guardrail"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
     security_opt:
       - no-new-privileges:true
     networks:
