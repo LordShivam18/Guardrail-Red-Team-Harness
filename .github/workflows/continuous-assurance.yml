@@ -67,8 +67,32 @@ jobs:
           PGDATABASE: "guardrail"
           DATABASE_URL: "postgresql://guardrail:${{ secrets.POSTGRES_PASSWORD || 'postgres_ci_password_123' }}@127.0.0.1:5432/guardrail"
 
+      - name: Wait for Drift Monitor
+        run: |
+          echo "Waiting for drift-monitor service to be healthy..."
+          for i in $(seq 1 30); do
+            if docker compose exec -T guardrail-mesh-drift python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()" 2>/dev/null; then
+              echo "[OK] Drift monitor is healthy (attempt $i/30)"
+              break
+            fi
+            echo "Attempt $i/30: drift-monitor not ready, retrying in 3s..."
+            sleep 3
+          done
+
       - name: Restart Web Container
         run: docker compose restart guardrail-mesh-web || true
+
+      - name: Wait for Web Container
+        run: |
+          echo "Waiting for web container to be ready after restart..."
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:3000 > /dev/null 2>&1; then
+              echo "[OK] Web container is ready (attempt $i/20)"
+              break
+            fi
+            echo "Attempt $i/20: web not ready, retrying in 3s..."
+            sleep 3
+          done
 
       - name: Install Python Dependencies
         run: pip install PyJWT requests

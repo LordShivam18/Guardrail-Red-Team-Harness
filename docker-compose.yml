@@ -21,6 +21,8 @@ services:
         condition: service_healthy
       guardrail-mesh-cache:
         condition: service_healthy
+      guardrail-mesh-drift:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 15s
@@ -45,9 +47,7 @@ services:
       DRIFT_WEBHOOK_SECRET: "${DRIFT_WEBHOOK_SECRET:-ci_drift_secret_12345}"
       DRIFT_WEBHOOK_TIMEOUT_SECONDS: "5"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
-    depends_on:
-      guardrail-mesh-web:
-        condition: service_healthy
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()"]
       interval: 15s
