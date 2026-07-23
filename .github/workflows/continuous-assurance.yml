@@ -59,7 +59,9 @@ jobs:
         run: npm ci
 
       - name: Hydrate Database Schema
-        run: docker compose exec -T guardrail-mesh-web npm run db:migrate
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: "postgresql://guardrail:${{ secrets.POSTGRES_PASSWORD }}@127.0.0.1:5432/guardrail"
 
       - name: Restart Web Container
         run: docker compose restart guardrail-mesh-web || true
