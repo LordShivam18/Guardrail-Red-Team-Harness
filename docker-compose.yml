@@ -108,7 +108,6 @@ services:
 
 networks:
   guardrail-mesh:
-    internal: true
 
 volumes:
   guardrail_mesh_postgres:
