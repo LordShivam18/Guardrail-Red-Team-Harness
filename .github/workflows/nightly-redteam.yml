@@ -31,18 +31,29 @@ jobs:
 
       - name: Verify Cloud Credentials
         run: |
-          if [ -z "${{ secrets.DATABASE_URL }}" ]; then
+          if [ -z "$DATABASE_URL" ]; then
             echo "❌ CRITICAL: DATABASE_URL is missing from GitHub Repository Secrets."
+            echo "   → Go to Settings > Secrets and variables > Actions and add DATABASE_URL."
             exit 1
           fi
-          if [ -z "${{ secrets.GEMINI_API_KEY }}" ]; then
+          if ! echo "$DATABASE_URL" | grep -qE '^postgres(ql)?://'; then
+            echo "❌ CRITICAL: DATABASE_URL is not a valid PostgreSQL connection string."
+            echo "   → Expected format: postgresql://user:password@host:5432/dbname"
+            exit 1
+          fi
+          if [ -z "$GEMINI_API_KEY" ]; then
             echo "❌ CRITICAL: GEMINI_API_KEY is missing from GitHub Repository Secrets."
             exit 1
           fi
           echo "✅ Production cloud configurations successfully loaded."
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Verify Database Schema
         run: npm run db:check-schema
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Seed adversarial prompts
         run: npm run seed:prompts
