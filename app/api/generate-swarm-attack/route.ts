@@ -22,7 +22,7 @@ function getClientIp(request: Request) {
 export async function POST(request: Request) {
   // 1. Require authenticated operator session
   try {
-    await requireOperatorSession();
+    await requireOperatorSession(request);
   } catch (error) {
     if (error instanceof OperatorSessionError) {
       return NextResponse.json(

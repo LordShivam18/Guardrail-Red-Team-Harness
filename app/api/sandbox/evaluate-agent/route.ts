@@ -57,7 +57,7 @@ type AgentDecision = {
 
 export async function POST(request: Request) {
   try {
-    await requireOperatorSession();
+    await requireOperatorSession(request);
   } catch {
     return NextResponse.json({ error: "An authenticated operator session is required." }, { status: 401 });
   }

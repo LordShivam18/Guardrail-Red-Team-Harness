@@ -36,6 +36,21 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install Node Dependencies
+        run: npm ci
+
+      - name: Run Node Unit & Integration Tests
+        run: npm test
+
+      - name: Install Python Dependencies
+        run: pip install -r services/drift-monitor/requirements.txt PyJWT requests httpx
+
+      - name: Python Import Smoke Test
+        run: python -c "import sys; sys.path.insert(0, 'services/drift-monitor'); import main; print('drift import ok')"
+
+      - name: Run Python Unit Tests
+        run: npm run test:python
+
       - name: Validate Docker Compose Configuration
         run: docker compose config
 
@@ -70,18 +85,6 @@ jobs:
           docker compose ps
           docker compose logs guardrail-mesh-db
           exit 1
-
-      - name: Install Node Dependencies
-        run: npm ci
-
-      - name: Run Node Unit & Integration Tests
-        run: npm test
-
-      - name: Install Python Dependencies
-        run: pip install -r services/drift-monitor/requirements.txt PyJWT requests httpx
-
-      - name: Run Python Unit Tests
-        run: npm run test:python
 
       - name: Verify Database Schema
         run: npm run db:verify-schema
@@ -129,5 +132,5 @@ jobs:
         run: python scripts/ci_test_swarm.py
 
       - name: Print Docker Logs on Failure
-        if: failure()
+        if: always()
         run: docker compose logs

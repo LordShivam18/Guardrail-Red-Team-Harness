@@ -138,6 +138,36 @@ analyzer.registry.add_recognizer(classified_recognizer)
 anonymizer = AnonymizerEngine()
 
 
+# --------------------------------------------------------------------------
+# Service-to-service authentication
+# --------------------------------------------------------------------------
+
+def _verify_service_token(
+    authorization: str | None = Header(None, alias="Authorization"),
+) -> None:
+    """Validate the ``DRIFT_MONITOR_API_TOKEN`` bearer token.
+
+    The health endpoint is exempt so that Docker/k8s probes work without
+    credentials.  All mutating or expensive endpoints require this.
+    """
+    expected_token = os.environ.get("DRIFT_MONITOR_API_TOKEN", "").strip()
+
+    if not expected_token:
+        # If no token is configured, reject all requests to protected
+        # endpoints rather than silently allowing unauthenticated access.
+        raise HTTPException(
+            status_code=503,
+            detail="Drift monitor service authentication is not configured.",
+        )
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing service credentials.")
+
+    presented = authorization.removeprefix("Bearer ").strip()
+    if not secrets.compare_digest(presented, expected_token):
+        raise HTTPException(status_code=403, detail="Invalid service credentials.")
+
+
 @app.get("/health")
 def health_check() -> dict[str, str]:
     """Lightweight health endpoint for the isolated container mesh."""
@@ -339,36 +369,6 @@ def dlp_scrubber(request: DlpScrubberRequest):
         "is_compromised": True,
         "redacted_text": anonymized_result.text
     }
-
-
-# --------------------------------------------------------------------------
-# Service-to-service authentication
-# --------------------------------------------------------------------------
-
-def _verify_service_token(
-    authorization: str | None = Header(None, alias="Authorization"),
-) -> None:
-    """Validate the ``DRIFT_MONITOR_API_TOKEN`` bearer token.
-
-    The health endpoint is exempt so that Docker/k8s probes work without
-    credentials.  All mutating or expensive endpoints require this.
-    """
-    expected_token = os.environ.get("DRIFT_MONITOR_API_TOKEN", "").strip()
-
-    if not expected_token:
-        # If no token is configured, reject all requests to protected
-        # endpoints rather than silently allowing unauthenticated access.
-        raise HTTPException(
-            status_code=503,
-            detail="Drift monitor service authentication is not configured.",
-        )
-
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing service credentials.")
-
-    presented = authorization.removeprefix("Bearer ").strip()
-    if not secrets.compare_digest(presented, expected_token):
-        raise HTTPException(status_code=403, detail="Invalid service credentials.")
 
 
 @app.post("/api/generate-swarm-attack", dependencies=[Depends(_verify_service_token)])
