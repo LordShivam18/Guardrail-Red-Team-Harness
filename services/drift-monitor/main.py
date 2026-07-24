@@ -8,25 +8,26 @@ probabilities or non-negative counts; they are normalized before comparison.
 from __future__ import annotations
 
 import hashlib
-import hmac
+import hmac as _hmac
 import json
 import logging
 import math
 import os
+import secrets
 from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
 import requests
 import io
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import Depends, FastAPI, Header, UploadFile, File, HTTPException
 from PIL import Image
 from sklearn.ensemble import IsolationForest
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
 from presidio_anonymizer import AnonymizerEngine
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 from scipy.special import rel_entr
-from swarm import generate_swarm_attack
+from swarm import SwarmConfigurationError, generate_swarm_attack
 
 
 LOGGER = logging.getLogger("guardrail_mesh.drift_monitor")
@@ -218,7 +219,7 @@ def _dispatch_drift_webhook(payload: dict[str, Any]) -> dict[str, Any]:
 
     webhook_secret = os.getenv("DRIFT_WEBHOOK_SECRET")
     if webhook_secret:
-        headers["x-mesh-signature"] = hmac.new(
+        headers["x-mesh-signature"] = _hmac.new(
             webhook_secret.encode("utf-8"), body, hashlib.sha256
         ).hexdigest()
 
@@ -360,13 +361,54 @@ def dlp_scrubber(request: DlpScrubberRequest):
     }
 
 
-@app.post("/api/generate-swarm-attack")
+# --------------------------------------------------------------------------
+# Service-to-service authentication
+# --------------------------------------------------------------------------
+
+def _verify_service_token(
+    authorization: str | None = Header(None, alias="Authorization"),
+) -> None:
+    """Validate the ``DRIFT_MONITOR_API_TOKEN`` bearer token.
+
+    The health endpoint is exempt so that Docker/k8s probes work without
+    credentials.  All mutating or expensive endpoints require this.
+    """
+    expected_token = os.environ.get("DRIFT_MONITOR_API_TOKEN", "").strip()
+
+    if not expected_token:
+        # If no token is configured, reject all requests to protected
+        # endpoints rather than silently allowing unauthenticated access.
+        raise HTTPException(
+            status_code=503,
+            detail="Drift monitor service authentication is not configured.",
+        )
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing service credentials.")
+
+    presented = authorization.removeprefix("Bearer ").strip()
+    if not secrets.compare_digest(presented, expected_token):
+        raise HTTPException(status_code=403, detail="Invalid service credentials.")
+
+
+@app.post("/api/generate-swarm-attack", dependencies=[Depends(_verify_service_token)])
 async def generate_swarm_attack_endpoint(request: SwarmRequest):
     """
     Generates a multi-agent adversarial swarm payload.
+
+    Protected by service-to-service token authentication.
     """
     try:
         payload = generate_swarm_attack(request.target_context)
         return {"swarm_payload": payload}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except SwarmConfigurationError:
+        raise HTTPException(
+            status_code=503,
+            detail="Swarm provider is not configured.",
+        )
+    except Exception:
+        LOGGER.exception("Swarm generation failed.")
+        raise HTTPException(
+            status_code=500,
+            detail="Swarm generation failed due to an internal error.",
+        )

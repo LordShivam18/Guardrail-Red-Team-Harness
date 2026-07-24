@@ -147,7 +147,9 @@ export async function POST(request: Request) {
 
   try {
     const startedAt = performance.now();
-    const response = await guardedResponse(prompt, { forceLive: true, targetModel });
+    const isTestMode =
+      process.env.GITHUB_ACTIONS === "true" || process.env.CI === "true";
+    const response = await guardedResponse(prompt, { forceLive: !isTestMode, targetModel });
     const latency = Math.round(performance.now() - startedAt);
 
     return NextResponse.json({

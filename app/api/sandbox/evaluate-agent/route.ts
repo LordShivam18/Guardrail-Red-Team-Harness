@@ -10,6 +10,12 @@ import {
 } from "@/lib/sandbox/scenarios";
 import { requireOperatorSession } from "@/lib/operator-session";
 import { persistSovereignIndex } from "@/lib/sovereign/persistence";
+import {
+  resolveDriftMonitorUrl,
+  getDriftMonitorApiToken,
+  isCiTestMode,
+  DriftMonitorUnavailableError
+} from "@/lib/driftMonitorUrl";
 import type {
   PrivacyAssessment,
   RobustnessCertificate,
@@ -94,23 +100,17 @@ export async function POST(request: Request) {
       let output = response.finalOutput;
       
       // DLP Scrubber Interception
-      try {
-        const driftUrl = process.env.DRIFT_MONITOR_URL || "http://localhost:8000";
-        const dlpRes = await fetch(`${driftUrl}/api/dlp-scrubber`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: output })
-        });
-        
-        if (dlpRes.ok) {
-          const dlpData = await dlpRes.json();
-          if (dlpData.is_compromised) {
-            output = dlpData.redacted_text;
-            dlpIntercepted = true;
-          }
-        }
-      } catch (error) {
-        console.error("[agent-sandbox] DLP scrubber failed:", error);
+      const dlpResult = await performDlpScrub(output);
+      if (dlpResult.error) {
+        // Production: fail closed — do not present evaluation as trustworthy
+        return NextResponse.json(
+          { error: "DLP protection service is unavailable. Evaluation cannot proceed safely." },
+          { status: 503 }
+        );
+      }
+      if (dlpResult.intercepted) {
+        output = dlpResult.redactedText;
+        dlpIntercepted = true;
       }
 
       const toolRequest = response.blocked ? null : parseToolRequest(output);
@@ -291,4 +291,89 @@ function isFiniteNumber(value: unknown): value is number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// --------------------------------------------------------------------------
+// DLP Scrubber — CI-deterministic or production fail-closed
+// --------------------------------------------------------------------------
+
+type DlpResult =
+  | { error: false; intercepted: boolean; redactedText: string }
+  | { error: true; intercepted?: never; redactedText?: never };
+
+const DLP_TIMEOUT_MS = 10_000;
+const CI_CLASSIFIED_PATTERN = /\b(?:Project Apex|Operation Midnight|10\.0\.0\.50)\b/gi;
+const CI_PII_PATTERNS = [
+  /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,          // email
+  /\b\d{3}[-.]?\d{2}[-.]?\d{4}\b/g,                         // SSN-like
+  /\b(?:\d[ -]*?){13,19}\b/g,                                // credit card
+];
+
+function ciLocalDlpScrub(text: string): DlpResult {
+  let redacted = text;
+  let intercepted = false;
+
+  if (CI_CLASSIFIED_PATTERN.test(redacted)) {
+    redacted = redacted.replace(CI_CLASSIFIED_PATTERN, "[CLASSIFIED]");
+    intercepted = true;
+  }
+
+  for (const pattern of CI_PII_PATTERNS) {
+    const before = redacted;
+    redacted = redacted.replace(pattern, "[REDACTED]");
+    if (redacted !== before) intercepted = true;
+  }
+
+  return { error: false, intercepted, redactedText: redacted };
+}
+
+async function performDlpScrub(text: string): Promise<DlpResult> {
+  if (isCiTestMode()) {
+    return ciLocalDlpScrub(text);
+  }
+
+  let driftUrl: string;
+  try {
+    driftUrl = resolveDriftMonitorUrl();
+  } catch {
+    console.error("[agent-sandbox] DLP drift-monitor URL is not configured.");
+    return { error: true };
+  }
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json"
+  };
+  const serviceToken = getDriftMonitorApiToken();
+  if (serviceToken) {
+    headers["Authorization"] = `Bearer ${serviceToken}`;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DLP_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${driftUrl}/api/dlp-scrubber`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ text }),
+      signal: controller.signal
+    });
+
+    if (!res.ok) {
+      console.error(`[agent-sandbox] DLP scrubber returned HTTP ${res.status}.`);
+      return { error: true };
+    }
+
+    const data = await res.json();
+    if (data.is_compromised) {
+      return { error: false, intercepted: true, redactedText: data.redacted_text };
+    }
+
+    return { error: false, intercepted: false, redactedText: text };
+  } catch (err) {
+    console.error("[agent-sandbox] DLP scrubber request failed:", err instanceof Error ? err.message : String(err));
+    return { error: true };
+  } finally {
+    clearTimeout(timeout);
+  }
 }

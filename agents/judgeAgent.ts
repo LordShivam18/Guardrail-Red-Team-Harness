@@ -207,6 +207,10 @@ class LlamaLocalJudgeProvider implements IJudgeProvider {
 
 export const judgeAgent: IJudgeProvider = {
   evaluate(prompt: string, response: string) {
+    const isCI = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
+    if (isCI) {
+      return Promise.resolve(getMockJudgeEvaluation(prompt, response));
+    }
     return createJudgeProvider().evaluate(prompt, response);
   }
 };

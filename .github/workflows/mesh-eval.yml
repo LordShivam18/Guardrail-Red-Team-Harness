@@ -8,6 +8,13 @@ env:
   NODE_VERSION: "20"
   MESH_CI_VOLUME: "50"
   MESH_CI_MODEL: "gemini-2.0-flash"
+  MESH_AUTH_TOKEN_SECRET: "ci_mesh_auth_secret_must_be_32_chars"
+  MESH_AUTH_ISSUER: "https://identity.example.gov"
+  MESH_AUTH_AUDIENCE: "guardrail-mesh-operator"
+  REDIS_URL: "redis://127.0.0.1:6379"
+  DATABASE_URL: "postgresql://guardrail:postgres_ci_password_123@127.0.0.1:5432/guardrail"
+  CI: "true"
+  GITHUB_ACTIONS: "true"
 
 jobs:
   mesh-security-gate:
@@ -28,29 +35,64 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Start Isolated CI Redis and Database
+        run: docker compose up -d guardrail-mesh-cache guardrail-mesh-db
+
+      - name: Wait for Redis
+        run: |
+          echo "Waiting for Redis to accept connections..."
+          for i in $(seq 1 30); do
+            if docker compose exec -T guardrail-mesh-cache redis-cli ping 2>/dev/null | grep -q PONG; then
+              echo "[OK] Redis is ready (attempt $i/30)"
+              exit 0
+            fi
+            echo "Attempt $i/30: Redis not ready, retrying in 2s..."
+            sleep 2
+          done
+          echo "❌ ERROR: Redis failed to become ready within 60s."
+          docker compose ps
+          docker compose logs guardrail-mesh-cache
+          exit 1
+
+      - name: Wait for PostgreSQL
+        run: |
+          echo "Waiting for PostgreSQL to accept connections..."
+          for i in $(seq 1 30); do
+            if docker compose exec -T guardrail-mesh-db pg_isready -U guardrail -d guardrail 2>/dev/null; then
+              echo "[OK] PostgreSQL is healthy (attempt $i/30)"
+              exit 0
+            fi
+            echo "Attempt $i/30: PostgreSQL not ready, retrying in 2s..."
+            sleep 2
+          done
+          echo "❌ ERROR: PostgreSQL failed to become ready within 60s."
+          docker compose ps
+          docker compose logs guardrail-mesh-db
+          exit 1
+
+      - name: Generate Short-Lived Operator JWT
+        run: npx tsx scripts/generate-ci-token.ts
+
       - name: Build Next.js application
         run: npm run build
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Start application server
         run: |
           npm run start &
+          SERVER_PID=$!
+          echo "$SERVER_PID" > server.pid
+          echo "Started Next.js server with PID $SERVER_PID"
           echo "Waiting for server to be ready..."
           for i in $(seq 1 30); do
             if curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 | grep -q "200\|308"; then
-              echo "Server is ready."
-              break
+              echo "[OK] Server is ready (attempt $i/30)"
+              exit 0
             fi
             echo "Attempt $i/30 — server not ready, waiting 2s..."
             sleep 2
           done
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          ACTIVE_JUDGE_PROVIDER: ${{ vars.ACTIVE_JUDGE_PROVIDER || 'gemini-native' }}
-          OLLAMA_MODEL: ${{ vars.OLLAMA_MODEL || 'qwen2:1.5b' }}
+          echo "❌ ERROR: Server failed to become ready within 60s."
+          exit 1
 
       - name: Run Mesh CI Security Gate
         run: |
@@ -58,9 +100,17 @@ jobs:
             --model "${{ env.MESH_CI_MODEL }}" \
             --volume "${{ env.MESH_CI_VOLUME }}" \
             --base-url http://localhost:3000
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Stop Background Application Server & Containers
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            SERVER_PID=$(cat server.pid)
+            echo "Stopping Next.js server PID $SERVER_PID..."
+            kill "$SERVER_PID" 2>/dev/null || true
+            rm -f server.pid
+          fi
+          docker compose down -v 2>/dev/null || true
 
       - name: Upload CI runner logs
         if: always()

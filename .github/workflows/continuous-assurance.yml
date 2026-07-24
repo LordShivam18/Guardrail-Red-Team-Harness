@@ -11,15 +11,16 @@ on:
 jobs:
   test-swarm-mesh:
     runs-on: ubuntu-latest
-    
+
     env:
-      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-      DRIFT_WEBHOOK_SECRET: ${{ secrets.DRIFT_WEBHOOK_SECRET }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      MESH_AUTH_TOKEN_SECRET: ${{ secrets.MESH_AUTH_TOKEN_SECRET }}
+      POSTGRES_PASSWORD: "postgres_ci_password_123"
+      DRIFT_WEBHOOK_SECRET: "ci_drift_secret_12345"
+      DRIFT_MONITOR_API_TOKEN: "ci_drift_monitor_api_token_12345"
+      MESH_AUTH_TOKEN_SECRET: "ci_mesh_auth_secret_must_be_32_chars"
       MESH_AUTH_ISSUER: "https://identity.example.gov"
       MESH_AUTH_AUDIENCE: "guardrail-mesh-operator"
+      CI: "true"
+      GITHUB_ACTIONS: "true"
 
     steps:
       - name: Checkout code
@@ -38,11 +39,12 @@ jobs:
       - name: Start Docker Services
         run: docker compose up -d --build
         env:
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres_ci_password_123' }}
-          DRIFT_WEBHOOK_SECRET: ${{ secrets.DRIFT_WEBHOOK_SECRET }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          MESH_AUTH_TOKEN_SECRET: ${{ secrets.MESH_AUTH_TOKEN_SECRET }}
+          POSTGRES_PASSWORD: "postgres_ci_password_123"
+          DRIFT_WEBHOOK_SECRET: "ci_drift_secret_12345"
+          DRIFT_MONITOR_API_TOKEN: "ci_drift_monitor_api_token_12345"
+          MESH_AUTH_TOKEN_SECRET: "ci_mesh_auth_secret_must_be_32_chars"
+          CI: "true"
+          GITHUB_ACTIONS: "true"
 
       - name: Verify Docker Containers
         if: always()
@@ -50,22 +52,32 @@ jobs:
 
       - name: Wait for PostgreSQL
         run: |
-          echo "Waiting 15 seconds for PostgreSQL to fully boot and accept connections..."
-          sleep 15
-          # A strict wait step to avoid race conditions with DB migrations
+          echo "Waiting for PostgreSQL to accept connections..."
+          for i in $(seq 1 30); do
+            if docker compose exec -T guardrail-mesh-db pg_isready -U guardrail -d guardrail 2>/dev/null; then
+              echo "[OK] PostgreSQL is healthy (attempt $i/30)"
+              exit 0
+            fi
+            echo "Attempt $i/30: PostgreSQL not ready, retrying in 2s..."
+            sleep 2
+          done
+          echo "❌ ERROR: PostgreSQL failed to become ready within 60s."
+          docker compose ps
+          docker compose logs guardrail-mesh-db
+          exit 1
 
       - name: Install Node Dependencies
         run: npm ci
 
-      - name: Hydrate Database Schema
-        run: npm run db:migrate
+      - name: Verify Database Schema
+        run: npm run db:verify-schema
         env:
           PGHOST: "127.0.0.1"
           PGPORT: "5432"
           PGUSER: "guardrail"
-          PGPASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres_ci_password_123' }}
+          PGPASSWORD: "postgres_ci_password_123"
           PGDATABASE: "guardrail"
-          DATABASE_URL: "postgresql://guardrail:${{ secrets.POSTGRES_PASSWORD || 'postgres_ci_password_123' }}@127.0.0.1:5432/guardrail"
+          DATABASE_URL: "postgresql://guardrail:postgres_ci_password_123@127.0.0.1:5432/guardrail"
 
       - name: Wait for Drift Monitor
         run: |
@@ -73,26 +85,31 @@ jobs:
           for i in $(seq 1 30); do
             if docker compose exec -T guardrail-mesh-drift python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()" 2>/dev/null; then
               echo "[OK] Drift monitor is healthy (attempt $i/30)"
-              break
+              exit 0
             fi
-            echo "Attempt $i/30: drift-monitor not ready, retrying in 3s..."
-            sleep 3
+            echo "Attempt $i/30: drift-monitor not ready, retrying in 2s..."
+            sleep 2
           done
-
-      - name: Restart Web Container
-        run: docker compose restart guardrail-mesh-web || true
+          echo "❌ ERROR: Drift monitor failed to become ready within 60s."
+          docker compose ps
+          docker compose logs guardrail-mesh-drift
+          exit 1
 
       - name: Wait for Web Container
         run: |
-          echo "Waiting for web container to be ready after restart..."
-          for i in $(seq 1 20); do
+          echo "Waiting for web container to be ready..."
+          for i in $(seq 1 30); do
             if curl -sf http://localhost:3000 > /dev/null 2>&1; then
-              echo "[OK] Web container is ready (attempt $i/20)"
-              break
+              echo "[OK] Web container is ready (attempt $i/30)"
+              exit 0
             fi
-            echo "Attempt $i/20: web not ready, retrying in 3s..."
-            sleep 3
+            echo "Attempt $i/30: web not ready, retrying in 2s..."
+            sleep 2
           done
+          echo "❌ ERROR: Web container failed to become ready within 60s."
+          docker compose ps
+          docker compose logs guardrail-mesh-web
+          exit 1
 
       - name: Install Python Dependencies
         run: pip install PyJWT requests
