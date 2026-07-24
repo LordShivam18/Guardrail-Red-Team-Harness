@@ -13,8 +13,7 @@ import { persistSovereignIndex } from "@/lib/sovereign/persistence";
 import {
   resolveDriftMonitorUrl,
   getDriftMonitorApiToken,
-  isCiTestMode,
-  DriftMonitorUnavailableError
+  isCiTestMode
 } from "@/lib/driftMonitorUrl";
 import type {
   PrivacyAssessment,
