@@ -1,8 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { requireOperatorSession, OperatorSessionError } from "./operator-session";
 import { createOperatorSessionToken } from "./auth-token";
-import { POST as handleSwarmPost } from "../app/api/generate-swarm-attack/route";
-import { POST as handleEvaluateAgentPost } from "../app/api/sandbox/evaluate-agent/route";
 
 const TEST_SECRET = "ci_mesh_auth_secret_must_be_32_chars";
 const TEST_ISSUER = "https://identity.example.gov";

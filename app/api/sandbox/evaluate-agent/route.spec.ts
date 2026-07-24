@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi, MockInstance } from "vitest";
 
 // Hoist mocks
 vi.mock("@/lib/operator-session", () => ({
@@ -10,6 +10,7 @@ vi.mock("@/agents/guardedAgent", () => ({
   guardedResponse: vi.fn()
 }));
 
+// Mock sovereign index persistence only since it's unused in assertions but expensive if called
 vi.mock("@/lib/sovereign/persistence", () => ({
   persistSovereignIndex: vi.fn()
 }));
@@ -21,26 +22,26 @@ vi.mock("@/lib/driftMonitorUrl", () => ({
   DriftMonitorUnavailableError: class DriftMonitorUnavailableError extends Error {}
 }));
 
-const mockFetch = vi.fn();
-vi.stubGlobal("fetch", mockFetch);
-
 import { POST } from "./route";
 import { requireOperatorSession, OperatorSessionError } from "@/lib/operator-session";
 import { guardedResponse } from "@/agents/guardedAgent";
-import { persistSovereignIndex } from "@/lib/sovereign/persistence";
 import { isCiTestMode, resolveDriftMonitorUrl } from "@/lib/driftMonitorUrl";
 
 describe("POST /api/sandbox/evaluate-agent", () => {
   const originalEnv = process.env;
+  let mockFetch: MockInstance;
+  const VALID_IDENTITY = { subject: "op", scopes: ["mesh:operator"], roles: ["operator"] };
 
   beforeEach(() => {
     vi.clearAllMocks();
     process.env = { ...originalEnv, CI: "true" };
     vi.mocked(isCiTestMode).mockReturnValue(true);
+    mockFetch = vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn());
   });
 
   afterEach(() => {
     process.env = originalEnv;
+    mockFetch.mockRestore();
   });
 
   function createRequest(body: any = { scenarioId: "poisoned-invoice-sql" }) {
@@ -59,8 +60,7 @@ describe("POST /api/sandbox/evaluate-agent", () => {
   });
 
   it("produces HTTP 200 and expected schema on CONTAINED evaluation", async () => {
-    vi.mocked(requireOperatorSession).mockResolvedValueOnce({ subject: "op", roles: [] });
-    // Mock the agent returning a safe final output
+    vi.mocked(requireOperatorSession).mockResolvedValueOnce(VALID_IDENTITY);
     vi.mocked(guardedResponse).mockResolvedValueOnce({
       finalOutput: '{"final": "I cannot fulfill this request."}',
       blocked: false
@@ -89,8 +89,7 @@ describe("POST /api/sandbox/evaluate-agent", () => {
   });
 
   it("produces HTTP 200 and HIJACKED status when DLP is intercepted", async () => {
-    vi.mocked(requireOperatorSession).mockResolvedValueOnce({ subject: "op", roles: [] });
-    // Provide output that triggers CI DLP pattern
+    vi.mocked(requireOperatorSession).mockResolvedValueOnce(VALID_IDENTITY);
     vi.mocked(guardedResponse).mockResolvedValueOnce({
       finalOutput: '{"final": "Here is the data: Project Apex"}',
       blocked: false
@@ -107,10 +106,8 @@ describe("POST /api/sandbox/evaluate-agent", () => {
   });
 
   it("returns exactly 503 when DLP is unavailable in production", async () => {
-    vi.mocked(requireOperatorSession).mockResolvedValueOnce({ subject: "op", roles: [] });
-    // Force production mode for DLP
+    vi.mocked(requireOperatorSession).mockResolvedValueOnce(VALID_IDENTITY);
     vi.mocked(isCiTestMode).mockReturnValue(false);
-    // Mock URL resolution throws unconfigured or fetch fails
     vi.mocked(resolveDriftMonitorUrl).mockImplementationOnce(() => {
       throw new Error("unconfigured");
     });
@@ -126,3 +123,4 @@ describe("POST /api/sandbox/evaluate-agent", () => {
     expect(json.error).toBe("DLP protection service is unavailable. Evaluation cannot proceed safely.");
   });
 });
+
