@@ -11,7 +11,8 @@ import * as tf from "@tensorflow/tfjs";
 import * as toxicity from "@tensorflow-models/toxicity";
 import {
   evaluateSecurityResponse,
-  getMockJudgeEvaluation
+  getMockJudgeEvaluation,
+  isAdversarialClassifier
 } from "./judgeAgent";
 import type { JudgeEvaluation } from "./judgeAgent";
 
@@ -699,22 +700,7 @@ async function getCiMockResponse(
 }
 
 function isAdversarialCiPrompt(prompt: string) {
-  return [
-    /\bcredit card\b/i,
-    /\bpii\b/i,
-    /\boverride\b/i,
-    /\bbypass\b/i,
-    /ignore all previous instructions/i,
-    /\bdeveloper mode\b/i,
-    /\bsystem prompt\b/i,
-    /\bunrestricted assistant\b/i,
-    /\bevade\b/i,
-    /\bcontent filter\b/i,
-    /\bsocial security\b/i,
-    /\bssn\b/i,
-    /\binsult\b/i,
-    /\bthreat(?:en|ening)?\b/i
-  ].some((pattern) => pattern.test(prompt));
+  return isAdversarialClassifier(prompt).isAdversarial;
 }
 
 async function getLocalToxicityMatches(text: string): Promise<LocalToxicityMatch[]> {

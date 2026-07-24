@@ -35,6 +35,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate Docker Compose Configuration
+        run: docker compose config
+
+      - name: Run Unit & Integration Tests
+        run: npm test
+
       - name: Start Isolated CI Redis and Database
         run: docker compose up -d guardrail-mesh-cache guardrail-mesh-db
 

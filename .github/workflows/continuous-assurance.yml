@@ -36,6 +36,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Validate Docker Compose Configuration
+        run: docker compose config
+
       - name: Start Docker Services
         run: docker compose up -d --build
         env:
@@ -43,6 +46,8 @@ jobs:
           DRIFT_WEBHOOK_SECRET: "ci_drift_secret_12345"
           DRIFT_MONITOR_API_TOKEN: "ci_drift_monitor_api_token_12345"
           MESH_AUTH_TOKEN_SECRET: "ci_mesh_auth_secret_must_be_32_chars"
+          MESH_AUTH_ISSUER: "https://identity.example.gov"
+          MESH_AUTH_AUDIENCE: "guardrail-mesh-operator"
           CI: "true"
           GITHUB_ACTIONS: "true"
 
@@ -68,6 +73,15 @@ jobs:
 
       - name: Install Node Dependencies
         run: npm ci
+
+      - name: Run Node Unit & Integration Tests
+        run: npm test
+
+      - name: Install Python Dependencies
+        run: pip install -r services/drift-monitor/requirements.txt PyJWT requests httpx
+
+      - name: Run Python Unit Tests
+        run: npm run test:python
 
       - name: Verify Database Schema
         run: npm run db:verify-schema
@@ -111,10 +125,7 @@ jobs:
           docker compose logs guardrail-mesh-web
           exit 1
 
-      - name: Install Python Dependencies
-        run: pip install PyJWT requests
-
-      - name: Run Automated Swarm CI Test
+      - name: Run Automated Swarm CI Integration Test
         run: python scripts/ci_test_swarm.py
 
       - name: Print Docker Logs on Failure

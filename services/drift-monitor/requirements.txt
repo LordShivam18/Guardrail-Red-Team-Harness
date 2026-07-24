@@ -8,3 +8,4 @@ scikit-learn
 presidio-analyzer
 presidio-anonymizer
 openai
+httpx

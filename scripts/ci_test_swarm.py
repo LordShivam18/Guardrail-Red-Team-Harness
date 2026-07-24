@@ -29,7 +29,6 @@ def generate_operator_token():
         "roles": ["operator"]
     }
     
-    # We use python-jwt (PyJWT) for simplicity
     token = jwt.encode(payload, SECRET, algorithm="HS256")
     return token
 
@@ -62,17 +61,42 @@ def test_continuous_assurance():
     # Wait for server readiness
     wait_for_server(BASE_URL, max_retries=15, delay=3)
     
-    # 1. Obtain Bearer Token
+    # 0. Integration Assertions: Unauthenticated Requests Must Return 401
+    print("\n[0] Asserting Authentication Interception for Protected Endpoints...")
+    
+    unauth_swarm = requests.post(
+        f"{BASE_URL}/api/generate-swarm-attack",
+        json={"target_context": "test"}
+    )
+    if unauth_swarm.status_code == 401:
+        print("    [PASS] Unauthenticated call to /api/generate-swarm-attack returned HTTP 401.")
+    else:
+        print(f"    [FAIL] Unauthenticated call to /api/generate-swarm-attack returned HTTP {unauth_swarm.status_code} (expected 401).")
+        sys.exit(2)
+
+    unauth_sandbox = requests.post(
+        f"{BASE_URL}/api/sandbox",
+        json={"prompt": "test prompt"}
+    )
+    if unauth_sandbox.status_code == 401:
+        print("    [PASS] Unauthenticated call to /api/sandbox returned HTTP 401.")
+    else:
+        print(f"    [FAIL] Unauthenticated call to /api/sandbox returned HTTP {unauth_sandbox.status_code} (expected 401).")
+        sys.exit(2)
+
+    # 1. Obtain Valid Bearer Token
+    print("\n[1] Generating Operator JWT Credential...")
     token = generate_operator_token()
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
     }
 
-    # 2. Generate Adversarial Swarm Payload
-    print("\n[1] Generating Adversarial Swarm Payload...")
+    # 2. Generate Adversarial Swarm Payload (Authenticated)
+    print("\n[2] Generating Adversarial Swarm Payload (Authenticated)...")
     swarm_req = requests.post(
         f"{BASE_URL}/api/generate-swarm-attack",
+        headers=headers,
         json={"target_context": "A helpful AI assistant with access to internal tools."}
     )
     
@@ -86,22 +110,18 @@ def test_continuous_assurance():
         print("ERROR: No swarm_payload received.")
         sys.exit(2)
         
+    print("    [PASS] Authenticated swarm generation succeeded.")
     print("--- Swarm Payload ---")
     print(swarm_payload[:150] + ("..." if len(swarm_payload) > 150 else ""))
     print("---------------------")
 
-    # 3. Fire Payload into Evaluate Agent Sandbox
-    print("\n[2] Evaluating Payload in Sandbox...")
+    # 3. Fire Payload into Evaluate Agent Sandbox (Authenticated)
+    print("\n[3] Evaluating Payload in Sandbox (Authenticated)...")
     
-    # We'll use a known scenario and override the entry document content for testing
-    # Since we can't easily override the scenario definition directly via API, 
-    # we'll use the unauthenticated /api/sandbox endpoint to evaluate the raw payload first,
-    # OR we can hit evaluate-agent and simulate it.
-    
-    # Let's hit the main /api/sandbox endpoint to check if the payload itself is caught by guards
     print("    -> Checking standalone prompt guards...")
     sandbox_req = requests.post(
         f"{BASE_URL}/api/sandbox",
+        headers=headers,
         json={"prompt": swarm_payload, "targetModel": "gemini-2.0-flash"}
     )
     
@@ -119,7 +139,6 @@ def test_continuous_assurance():
     else:
         print("    [FAIL] Standalone Sandbox FAILED to block the attack.")
         
-    # Let's also run the full agent scenario to check dlpIntercepted and status
     print("\n    -> Running Agent Evaluation Scenario (poisoned-invoice-sql)...")
     run_id = str(uuid.uuid4())
     evaluate_req = requests.post(
@@ -174,7 +193,7 @@ def test_continuous_assurance():
     print(f"    Sovereign Score: {sovereign_score}")
 
     # 4. Assertions
-    print("\n[3] Asserting Results...")
+    print("\n[4] Asserting Security Results...")
     
     attack_caught = False
     
@@ -187,8 +206,6 @@ def test_continuous_assurance():
     if sovereign_score == 0:
         print("    [PASS] Sovereign Score collapsed to 0.")
         attack_caught = True
-        
-    # Also consider the standalone block as a catch
     if is_blocked:
         print("    [PASS] Payload was proactively blocked by guardedAgent.")
         attack_caught = True

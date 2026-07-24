@@ -145,10 +145,9 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/api/analyze-drift")
+@app.post("/api/analyze-drift", dependencies=[Depends(_verify_service_token)])
 def analyze_drift(request: DriftAnalysisRequest) -> dict[str, Any]:
     """Calculate KL(P || Q) and alert the Next.js control plane on drift."""
-
     baseline = _normalize_distribution(request.baseline_distribution)
     live = _normalize_distribution(request.live_distribution)
     divergence = float(np.sum(rel_entr(baseline, live)))
@@ -157,8 +156,6 @@ def analyze_drift(request: DriftAnalysisRequest) -> dict[str, Any]:
     response: dict[str, Any] = {
         "drift_detected": drift_detected,
         "threshold": DRIFT_THRESHOLD,
-        # JSON cannot represent IEEE infinity.  The paired boolean preserves
-        # the exact result for a nonzero P bucket where Q is zero.
         "kl_divergence": divergence if math.isfinite(divergence) else None,
         "kl_divergence_is_infinite": math.isinf(divergence),
         "webhook": {"attempted": False, "delivered": False},
@@ -188,14 +185,7 @@ def _normalize_distribution(values: list[float]) -> np.ndarray:
 
 
 def _dispatch_drift_webhook(payload: dict[str, Any]) -> dict[str, Any]:
-    """Attempt the internal webhook without making alert delivery a false negative.
-
-    Docker Compose should set ``DRIFT_WEBHOOK_URL`` to
-    ``http://guardrail-mesh-web:3000/api/webhooks/drift``.  The local default
-    keeps direct development simple.  If ``DRIFT_WEBHOOK_SECRET`` is set, the
-    raw, deterministically serialized JSON body is HMAC-SHA256 signed in the
-    ``x-mesh-signature`` header.
-    """
+    """Attempt the internal webhook without making alert delivery a false negative."""
 
     webhook_url = os.getenv("DRIFT_WEBHOOK_URL", DEFAULT_WEBHOOK_URL).strip()
     if not webhook_url:
@@ -267,7 +257,7 @@ def _webhook_timeout_seconds() -> float:
     return min(max(timeout, 0.1), 60.0)
 
 
-@app.post("/api/analyze-vision")
+@app.post("/api/analyze-vision", dependencies=[Depends(_verify_service_token)])
 async def analyze_vision(file: UploadFile = File(...)):
     """Analyze an uploaded image for high-frequency noise/variance (visual injection)."""
     if not file.content_type.startswith("image/"):
@@ -275,23 +265,15 @@ async def analyze_vision(file: UploadFile = File(...)):
 
     content = await file.read()
     try:
-        img = Image.open(io.BytesIO(content)).convert("L")  # Convert to grayscale
+        img = Image.open(io.BytesIO(content)).convert("L")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid image file.")
 
-    # Calculate pixel variance
     img_array = np.array(img)
     variance = np.var(img_array)
-    
-    # Baseline for variance to simulate steganographic instructions or adversarial overlays
-    # We use a simple arbitrary threshold for the simulation.
-    VARIANCE_THRESHOLD = 5000.0  # Just an example threshold
-    
-    # High frequency noise check (simplified)
-    # A true implementation would use a high-pass filter or FFT.
-    # We simply use variance as a proxy for the requirement.
+    VARIANCE_THRESHOLD = 5000.0
     visual_injection_detected = bool(variance > VARIANCE_THRESHOLD)
-    
+
     return {
         "VISUAL_INJECTION_DETECTED": visual_injection_detected,
         "variance": float(variance)
@@ -306,25 +288,23 @@ class SwarmRequest(BaseModel):
     target_context: str = "A helpful AI assistant with access to internal tools."
 
 
-@app.post("/api/analyze-data")
+@app.post("/api/analyze-data", dependencies=[Depends(_verify_service_token)])
 def analyze_data(request: DataAnalysisRequest):
     """Analyze a JSON array of time-series data for structural anomalies."""
     if not request.data:
         raise HTTPException(status_code=400, detail="Data array cannot be empty.")
-        
+
     data_array = np.array(request.data).reshape(-1, 1)
-    
-    # Run Isolation Forest to detect anomalies with 3% contamination
+
     clf = IsolationForest(contamination=0.03, random_state=42)
     clf.fit(data_array)
     preds = clf.predict(data_array)
-    
-    # Calculate outlier ratio
+
     outliers = (preds == -1).sum()
     outlier_ratio = float(outliers / len(request.data))
-    
+
     data_poisoning_detected = bool(outlier_ratio >= 0.03)
-    
+
     return {
         "DATA_POISONING_DETECTED": data_poisoning_detected,
         "outlier_ratio": outlier_ratio
@@ -335,11 +315,11 @@ class DlpScrubberRequest(BaseModel):
     text: str
 
 
-@app.post("/api/dlp-scrubber")
+@app.post("/api/dlp-scrubber", dependencies=[Depends(_verify_service_token)])
 def dlp_scrubber(request: DlpScrubberRequest):
     """Analyze and redact classified entities and PII from generated text."""
     if not request.text:
-         return {"is_compromised": False, "redacted_text": ""}
+        return {"is_compromised": False, "redacted_text": ""}
 
     results = analyzer.analyze(
         text=request.text,

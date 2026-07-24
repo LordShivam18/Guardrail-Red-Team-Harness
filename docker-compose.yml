@@ -17,6 +17,8 @@ services:
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
       MESH_AUTH_TOKEN_SECRET: "${MESH_AUTH_TOKEN_SECRET:-ci_mesh_auth_secret_must_be_32_chars}"
+      MESH_AUTH_ISSUER: "${MESH_AUTH_ISSUER:-https://identity.example.gov}"
+      MESH_AUTH_AUDIENCE: "${MESH_AUTH_AUDIENCE:-guardrail-mesh-operator}"
       GITHUB_ACTIONS: "${GITHUB_ACTIONS:-false}"
       CI: "${CI:-false}"
     depends_on:
