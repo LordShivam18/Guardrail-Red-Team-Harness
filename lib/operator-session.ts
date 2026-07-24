@@ -15,8 +15,9 @@ export class OperatorSessionError extends Error {
  * Verifies operator credentials for API routes and Server Actions.
  *
  * 1. Checks `Authorization: Bearer <JWT>` if `request` is provided.
- * 2. Falls back to `mesh_session` HTTP-only cookie.
- * 3. Never trusts client-supplied `x-mesh-operator-*` headers as authentication.
+ * 2. Falls back to `mesh_session` HTTP-only cookie from request headers.
+ * 3. Falls back to Next's `cookies()` only if no request cookie is available.
+ * 4. Never trusts client-supplied `x-mesh-operator-*` headers as authentication.
  */
 export async function requireOperatorSession(request?: Request): Promise<OperatorIdentity> {
   // 1. Try Bearer token from Request Authorization header
@@ -31,12 +32,28 @@ export async function requireOperatorSession(request?: Request): Promise<Operato
     }
   }
 
-  // 2. Fall back to cookie
+  // 2. Try cookie from request Cookie header
   let sessionToken: string | undefined;
-  try {
-    sessionToken = cookies().get(SESSION_COOKIE)?.value;
-  } catch {
-    // cookies() may throw outside Next.js request contexts
+  if (request) {
+    const cookieHeader = request.headers.get("cookie");
+    if (cookieHeader) {
+      const cookiesArr = cookieHeader.split(";").map(c => c.trim());
+      for (const c of cookiesArr) {
+        if (c.startsWith(`${SESSION_COOKIE}=`)) {
+          sessionToken = c.substring(SESSION_COOKIE.length + 1);
+          break;
+        }
+      }
+    }
+  }
+
+  // 3. Fall back to Next.js cookies() API
+  if (!sessionToken) {
+    try {
+      sessionToken = cookies().get(SESSION_COOKIE)?.value;
+    } catch {
+      // cookies() may throw outside Next.js request contexts
+    }
   }
 
   if (sessionToken) {
@@ -46,6 +63,6 @@ export async function requireOperatorSession(request?: Request): Promise<Operato
     }
   }
 
-  // 3. Reject missing or invalid credentials
+  // 4. Reject missing or invalid credentials
   throw new OperatorSessionError();
 }

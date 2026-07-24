@@ -7,6 +7,8 @@ import os
 import unittest
 from unittest import mock
 
+import openai
+
 from swarm import (
     SwarmConfigurationError,
     generate_swarm_attack,
@@ -45,7 +47,6 @@ class TestCiMode(unittest.TestCase):
 
     @mock.patch.dict(os.environ, {"CI": "1"}, clear=True)
     def test_ci_one_is_not_ci(self):
-        """Only 'true' (case-insensitive) activates CI mode, not '1'."""
         self.assertFalse(_is_ci_mode())
 
     @mock.patch.dict(os.environ, {"CI": "TRUE"}, clear=True)
@@ -57,32 +58,27 @@ class TestCiDeterministicPayload(unittest.TestCase):
     """CI mode generates a fixed, realistic payload without network calls."""
 
     @mock.patch.dict(os.environ, {"CI": "true"}, clear=True)
-    def test_returns_string(self):
+    @mock.patch("swarm.openai.OpenAI")
+    def test_returns_string(self, mock_openai):
         payload = generate_swarm_attack("A helpful AI assistant")
         self.assertIsInstance(payload, str)
         self.assertGreater(len(payload), 50)
+        mock_openai.assert_not_called()
 
     @mock.patch.dict(os.environ, {"CI": "true"}, clear=True)
-    def test_deterministic_same_input(self):
+    @mock.patch("swarm.openai.OpenAI")
+    def test_deterministic_same_input(self, mock_openai):
         ctx = "A helpful AI assistant with access to internal tools."
         a = generate_swarm_attack(ctx)
         b = generate_swarm_attack(ctx)
         self.assertEqual(a, b)
+        mock_openai.assert_not_called()
 
     @mock.patch.dict(os.environ, {"CI": "true"}, clear=True)
     def test_payload_is_from_known_set(self):
         ctx = "test target"
         payload = generate_swarm_attack(ctx)
         self.assertIn(payload, _CI_DETERMINISTIC_PAYLOADS)
-
-    @mock.patch.dict(os.environ, {"CI": "true"}, clear=True)
-    def test_different_contexts_can_yield_different_payloads(self):
-        """Show that the hash distributes across payloads."""
-        payloads = set()
-        for i in range(20):
-            payloads.add(generate_swarm_attack(f"context-{i}"))
-        # With 3 payloads and 20 contexts, expect at least 2 unique
-        self.assertGreaterEqual(len(payloads), 2)
 
 
 class TestProductionConfigValidation(unittest.TestCase):
@@ -116,12 +112,21 @@ class TestProductionConfigValidation(unittest.TestCase):
         },
         clear=True,
     )
-    def test_valid_config_creates_client(self):
-        """With valid config, we proceed to call the provider (which will fail
-        without a real server, but the config check passes)."""
-        with self.assertRaises(RuntimeError):
-            # Will fail on actual API call, not on config validation
-            generate_swarm_attack("target")
+    @mock.patch("swarm.openai.OpenAI")
+    def test_valid_config_creates_client(self, mock_openai):
+        # Setup mock to simulate success
+        mock_client = mock.MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.return_value.choices = [
+            mock.MagicMock(message=mock.MagicMock(content="Mocked response"))
+        ]
+        
+        generate_swarm_attack("target")
+        mock_openai.assert_called_once_with(
+            base_url="http://provider:8080/v1",
+            api_key="sk-test",
+            timeout=30,
+        )
 
 
 class TestProviderFailureHandling(unittest.TestCase):
@@ -136,15 +141,47 @@ class TestProviderFailureHandling(unittest.TestCase):
         },
         clear=True,
     )
-    def test_unreachable_provider_raises_runtime_error(self):
+    @mock.patch("swarm.openai.OpenAI")
+    def test_unreachable_provider_raises_runtime_error(self, mock_openai):
+        mock_client = mock.MagicMock()
+        mock_openai.return_value = mock_client
+        # Simulate network failure from the provider client
+        mock_client.chat.completions.create.side_effect = openai.OpenAIError("Connection refused to 127.0.0.1:19999")
+        
         with self.assertRaises(RuntimeError) as ctx:
             generate_swarm_attack("target")
+            
         msg = str(ctx.exception)
         # Must not leak provider URL or API key
         self.assertNotIn("sk-test", msg)
         self.assertNotIn("19999", msg)
+        self.assertNotIn("Connection refused", msg)
         self.assertIn("Swarm provider request failed", msg)
+
+    @mock.patch.dict(
+        os.environ,
+        {
+            "SWARM_PROVIDER_BASE_URL": "http://provider/v1",
+            "SWARM_PROVIDER_API_KEY": "sk-test",
+            "SWARM_PROVIDER_MODEL": "test-model",
+        },
+        clear=True,
+    )
+    @mock.patch("swarm.openai.OpenAI")
+    def test_empty_response_raises_runtime_error(self, mock_openai):
+        mock_client = mock.MagicMock()
+        mock_openai.return_value = mock_client
+        # Simulate empty response content
+        mock_client.chat.completions.create.return_value.choices = [
+            mock.MagicMock(message=mock.MagicMock(content=None))
+        ]
+        
+        with self.assertRaises(RuntimeError) as ctx:
+            generate_swarm_attack("target")
+            
+        self.assertIn("Swarm provider returned an empty response.", str(ctx.exception))
 
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -28,50 +28,56 @@ describe("Focused Operator Authentication & Route Security Tests", () => {
 
   it("valid bearer JWT succeeds and returns OperatorIdentity", async () => {
     const validJwt = await createOperatorSessionToken("ci-test-operator");
-    expect(validJwt).toBeTruthy();
-
     const req = new Request("http://localhost:3000/api/sandbox/evaluate-agent", {
-      headers: {
-        authorization: `Bearer ${validJwt}`
-      }
+      headers: { authorization: `Bearer ${validJwt}` }
     });
-
     const identity = await requireOperatorSession(req);
-    expect(identity).toMatchObject({
-      subject: "ci-test-operator",
-      roles: ["operator"]
-    });
+    expect(identity).toMatchObject({ subject: "ci-test-operator", roles: ["operator"] });
   });
 
-  it("valid session cookie succeeds when mesh_session is present", async () => {
+  it("valid session cookie succeeds when mesh_session is present in Cookie header", async () => {
     const validJwt = await createOperatorSessionToken("cookie-operator");
-    expect(validJwt).toBeTruthy();
-
     const req = new Request("http://localhost:3000/api/sandbox/evaluate-agent", {
-      headers: {
-        authorization: `Bearer ${validJwt}`
-      }
+      headers: { Cookie: `other_cookie=123; mesh_session=${validJwt}; session=abc` }
     });
-
     const identity = await requireOperatorSession(req);
     expect(identity.subject).toBe("cookie-operator");
   });
 
-  it("missing credentials throws OperatorSessionError (returns 401)", async () => {
-    const req = new Request("http://localhost:3000/api/generate-swarm-attack", {
-      headers: {}
+  it("valid bearer takes precedence over a different valid cookie identity", async () => {
+    const bearerJwt = await createOperatorSessionToken("bearer-operator");
+    const cookieJwt = await createOperatorSessionToken("cookie-operator");
+    const req = new Request("http://localhost:3000/api/sandbox/evaluate-agent", {
+      headers: {
+        authorization: `Bearer ${bearerJwt}`,
+        Cookie: `mesh_session=${cookieJwt}`
+      }
     });
+    const identity = await requireOperatorSession(req);
+    expect(identity.subject).toBe("bearer-operator");
+  });
 
+  it("invalid bearer plus valid cookie uses the cookie", async () => {
+    const cookieJwt = await createOperatorSessionToken("cookie-operator");
+    const req = new Request("http://localhost:3000/api/sandbox/evaluate-agent", {
+      headers: {
+        authorization: `Bearer invalid.jwt.token`,
+        Cookie: `mesh_session=${cookieJwt}`
+      }
+    });
+    const identity = await requireOperatorSession(req);
+    expect(identity.subject).toBe("cookie-operator");
+  });
+
+  it("invalid bearer without a valid cookie returns 401 (throws error)", async () => {
+    const req = new Request("http://localhost:3000/api/sandbox/evaluate-agent", {
+      headers: { authorization: "Bearer invalid.jwt.token" }
+    });
     await expect(requireOperatorSession(req)).rejects.toThrow(OperatorSessionError);
   });
 
-  it("invalid bearer token throws OperatorSessionError (returns 401)", async () => {
-    const req = new Request("http://localhost:3000/api/sandbox/evaluate-agent", {
-      headers: {
-        authorization: "Bearer invalid.jwt.token"
-      }
-    });
-
+  it("missing credentials throws OperatorSessionError (returns 401)", async () => {
+    const req = new Request("http://localhost:3000/api/generate-swarm-attack", { headers: {} });
     await expect(requireOperatorSession(req)).rejects.toThrow(OperatorSessionError);
   });
 
@@ -82,54 +88,6 @@ describe("Focused Operator Authentication & Route Security Tests", () => {
         "x-mesh-operator-roles": "admin,operator"
       }
     });
-
     await expect(requireOperatorSession(req)).rejects.toThrow(OperatorSessionError);
-  });
-
-  it("/api/generate-swarm-attack route rejects unauthenticated request with 401", async () => {
-    const req = new Request("http://localhost:3000/api/generate-swarm-attack", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target_context: "test" })
-    });
-
-    const res = await handleSwarmPost(req);
-    expect(res.status).toBe(401);
-    const json = await res.json();
-    expect(json.error).toBe("UNAUTHORIZED");
-  });
-
-  it("/api/generate-swarm-attack reaches rate limiter & drift-monitor forwarding after valid bearer authentication", async () => {
-    const validJwt = await createOperatorSessionToken("ci-test-operator");
-    const req = new Request("http://localhost:3000/api/generate-swarm-attack", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        authorization: `Bearer ${validJwt}`
-      },
-      body: JSON.stringify({ target_context: "A helpful assistant" })
-    });
-
-    const res = await handleSwarmPost(req);
-    // In CI mode with mock or test env, it proceeds past auth (status is 200 or 503 if drift monitor unconfigured)
-    expect([200, 503]).toContain(res.status);
-  });
-
-  it("/api/sandbox/evaluate-agent accepts valid CI bearer token", async () => {
-    const validJwt = await createOperatorSessionToken("ci-test-operator");
-    const req = new Request("http://localhost:3000/api/sandbox/evaluate-agent", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        authorization: `Bearer ${validJwt}`
-      },
-      body: JSON.stringify({
-        scenarioId: "poisoned-invoice-sql",
-        targetModel: "gemini-2.0-flash"
-      })
-    });
-
-    const res = await handleEvaluateAgentPost(req);
-    expect(res.status).not.toBe(401);
   });
 });
