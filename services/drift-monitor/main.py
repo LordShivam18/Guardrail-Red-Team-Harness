@@ -14,6 +14,7 @@ import logging
 import math
 import os
 import secrets
+import threading
 from datetime import datetime, timezone
 from typing import Any
 
@@ -123,19 +124,51 @@ app = FastAPI(
     description="Post-market statistical drift detection using KL divergence.",
 )
 
-# Setup Presidio for DLP
-analyzer = AnalyzerEngine()
-classified_pattern = Pattern(
-    name="classified_keywords",
-    regex=r"\b(?:Project Apex|Operation Midnight|10\.0\.0\.50)\b",
-    score=1.0
-)
-classified_recognizer = PatternRecognizer(
-    supported_entity="CLASSIFIED",
-    patterns=[classified_pattern]
-)
-analyzer.registry.add_recognizer(classified_recognizer)
-anonymizer = AnonymizerEngine()
+# Setup Presidio for DLP lazily — thread-safe, fail-closed
+_analyzer_instance: AnalyzerEngine | None = None
+_anonymizer_instance: AnonymizerEngine | None = None
+_dlp_lock = threading.Lock()
+
+
+def get_dlp_engines() -> tuple[AnalyzerEngine, AnonymizerEngine]:
+    """Return cached (AnalyzerEngine, AnonymizerEngine), creating on first call.
+
+    Thread-safe: uses double-checked locking so concurrent requests never
+    double-initialize.  On failure the globals remain ``None`` (fail-closed)
+    so the next caller retries and protected endpoints return 503.
+    """
+    global _analyzer_instance, _anonymizer_instance
+
+    # Fast path — already initialized
+    if _analyzer_instance is not None and _anonymizer_instance is not None:
+        return _analyzer_instance, _anonymizer_instance
+
+    with _dlp_lock:
+        # Re-check inside lock to avoid double initialization
+        if _analyzer_instance is not None and _anonymizer_instance is not None:
+            return _analyzer_instance, _anonymizer_instance
+
+        try:
+            analyzer = AnalyzerEngine()
+            classified_pattern = Pattern(
+                name="classified_keywords",
+                regex=r"\b(?:Project Apex|Operation Midnight|10\.0\.0\.50)\b",
+                score=1.0,
+            )
+            classified_recognizer = PatternRecognizer(
+                supported_entity="CLASSIFIED",
+                patterns=[classified_pattern],
+            )
+            analyzer.registry.add_recognizer(classified_recognizer)
+            anonymizer = AnonymizerEngine()
+        except Exception as exc:
+            LOGGER.error("Failed to initialize DLP NLP engine: %s", exc)
+            raise RuntimeError("NLP engine initialization failed.") from exc
+
+        # Assign atomically only after full success
+        _analyzer_instance = analyzer
+        _anonymizer_instance = anonymizer
+        return _analyzer_instance, _anonymizer_instance
 
 
 # --------------------------------------------------------------------------
@@ -350,6 +383,14 @@ def dlp_scrubber(request: DlpScrubberRequest):
     """Analyze and redact classified entities and PII from generated text."""
     if not request.text:
         return {"is_compromised": False, "redacted_text": ""}
+
+    try:
+        analyzer, anonymizer = get_dlp_engines()
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=503,
+            detail="DLP engine is unavailable due to missing model or configuration."
+        )
 
     results = analyzer.analyze(
         text=request.text,

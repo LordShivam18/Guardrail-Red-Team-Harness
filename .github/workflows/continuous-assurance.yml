@@ -55,7 +55,17 @@ jobs:
         run: docker compose config
 
       - name: Start Docker Services
-        run: docker compose up -d --build
+        run: |
+          if ! docker compose up -d --build; then
+            docker compose ps -a
+            docker compose logs --no-color guardrail-mesh-drift
+            container_id="$(docker compose ps -q guardrail-mesh-drift)"
+            if [ -n "$container_id" ]; then
+              docker inspect "$container_id" \
+                --format='exit={{.State.ExitCode}} error={{.State.Error}}'
+            fi
+            exit 1
+          fi
         env:
           POSTGRES_PASSWORD: "postgres_ci_password_123"
           DRIFT_WEBHOOK_SECRET: "ci_drift_secret_12345"
@@ -108,8 +118,13 @@ jobs:
             sleep 2
           done
           echo "❌ ERROR: Drift monitor failed to become ready within 60s."
-          docker compose ps
-          docker compose logs guardrail-mesh-drift
+          docker compose ps -a
+          docker compose logs --no-color guardrail-mesh-drift
+          container_id="$(docker compose ps -q guardrail-mesh-drift)"
+          if [ -n "$container_id" ]; then
+            docker inspect "$container_id" \
+              --format='exit={{.State.ExitCode}} error={{.State.Error}}'
+          fi
           exit 1
 
       - name: Wait for Web Container
@@ -133,4 +148,11 @@ jobs:
 
       - name: Print Docker Logs on Failure
         if: always()
-        run: docker compose logs
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color
+          container_id="$(docker compose ps -q guardrail-mesh-drift)"
+          if [ -n "$container_id" ]; then
+            docker inspect "$container_id" \
+              --format='exit={{.State.ExitCode}} error={{.State.Error}}'
+          fi
