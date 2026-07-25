@@ -9,7 +9,7 @@ import {
   getAgentHijackingScenario
 } from "@/lib/sandbox/scenarios";
 import { requireOperatorSession } from "@/lib/operator-session";
-import { persistSovereignIndex } from "@/lib/sovereign/persistence";
+import { persistSovereignIndex, SovereignRunNotFoundError } from "@/lib/sovereign/persistence";
 import {
   resolveDriftMonitorUrl,
   getDriftMonitorApiToken,
@@ -163,8 +163,12 @@ export async function POST(request: Request) {
       }
     });
   } catch (error) {
-    console.error("[agent-sandbox] Evaluation failed.");
-    console.error(error);
+    if (error instanceof SovereignRunNotFoundError) {
+      console.error("[agent-sandbox] Sovereign Index persistence failed: run not found");
+    } else {
+      console.error("[agent-sandbox] Evaluation failed.");
+      console.error(error);
+    }
     return NextResponse.json({ error: "Agent sandbox evaluation failed." }, { status: 500 });
   }
 }

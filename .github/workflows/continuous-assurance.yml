@@ -144,7 +144,121 @@ jobs:
           exit 1
 
       - name: Run Automated Swarm CI Integration Test
-        run: python scripts/ci_test_swarm.py
+        run: |
+          CI_RUN_ID="$(python -c 'import uuid; print(uuid.uuid4())')"
+          export CI_RUN_ID
+          export CI_PERSISTED_INDEX_PATH="$RUNNER_TEMP/api-persisted-index.json"
+          echo "Generated CI_RUN_ID: $CI_RUN_ID"
+          echo "Target API JSON output path: $CI_PERSISTED_INDEX_PATH"
+
+          cleanup() {
+            echo "Cleaning up CI fixture for run $CI_RUN_ID..."
+            docker compose exec -T guardrail-mesh-db \
+              psql \
+              -U "${POSTGRES_USER:-guardrail}" \
+              -d "${POSTGRES_DB:-guardrail}" \
+              -c "DELETE FROM redteam_runs WHERE id = '$CI_RUN_ID'::uuid;" || true
+          }
+          trap cleanup EXIT
+
+          echo "Inserting CI database fixture into redteam_runs..."
+          docker compose exec -T guardrail-mesh-db \
+            psql \
+            -U "${POSTGRES_USER:-guardrail}" \
+            -d "${POSTGRES_DB:-guardrail}" \
+            -c "
+              INSERT INTO redteam_runs (
+                id,
+                model_version,
+                jailbreak_rate,
+                fp_rate,
+                safety_mean,
+                safety_variance,
+                max_compute_shift,
+                safety_sharpe
+              ) VALUES (
+                '$CI_RUN_ID'::uuid,
+                'gemini-2.0-flash',
+                0,
+                0,
+                1,
+                0,
+                0,
+                1
+              );
+            "
+
+          echo "Executing Swarm CI Integration Test..."
+          python scripts/ci_test_swarm.py
+
+          echo "Exporting persisted record from PostgreSQL to JSON..."
+          docker compose exec -T guardrail-mesh-db \
+            psql \
+            -U "${POSTGRES_USER:-guardrail}" \
+            -d "${POSTGRES_DB:-guardrail}" \
+            -t -A \
+            -c "
+              SELECT json_build_object(
+                'score', sovereign_score,
+                'status', compliance_status,
+                'breakdown', json_build_object(
+                  'robustness', robustness_subscore,
+                  'privacy', privacy_subscore,
+                  'fuzzing', fuzzing_subscore
+                )
+              )
+              FROM redteam_runs
+              WHERE id = '$CI_RUN_ID'::uuid;
+            " > "$RUNNER_TEMP/db-persisted-index.json"
+
+          echo "Comparing API persistedIndex JSON with Database JSON record..."
+          python -c "
+          import json, sys
+
+          api_file = '$CI_PERSISTED_INDEX_PATH'
+          db_file = '$RUNNER_TEMP/db-persisted-index.json'
+
+          with open(api_file, 'r', encoding='utf-8') as f:
+              api_data = json.load(f)
+
+          with open(db_file, 'r', encoding='utf-8') as f:
+              db_raw = f.read().strip()
+
+          if not db_raw:
+              print('❌ ERROR: Database query returned no rows for run $CI_RUN_ID')
+              sys.exit(1)
+
+          db_data = json.loads(db_raw)
+
+          def check_nulls(obj, path=''):
+              if obj is None:
+                  print(f'❌ ERROR: Field \"{path}\" is null in database record')
+                  sys.exit(1)
+              if isinstance(obj, dict):
+                  for k, v in obj.items():
+                      check_nulls(v, f'{path}.{k}' if path else k)
+
+          check_nulls(db_data)
+
+          if api_data.get('status') != db_data.get('status'):
+              print(f\"❌ ERROR: Mismatch in field 'status': API={api_data.get('status')} vs DB={db_data.get('status')}\")
+              sys.exit(1)
+
+          if api_data.get('score') != db_data.get('score'):
+              print(f\"❌ ERROR: Mismatch in field 'score': API={api_data.get('score')} vs DB={db_data.get('score')}\")
+              sys.exit(1)
+
+          api_bd = api_data.get('breakdown', {})
+          db_bd = db_data.get('breakdown', {})
+          for key in ['robustness', 'privacy', 'fuzzing']:
+              v_api = api_bd.get(key)
+              v_db = db_bd.get(key)
+              if v_api is None or v_db is None or abs(float(v_api) - float(v_db)) > 1e-5:
+                  print(f\"❌ ERROR: Mismatch in field 'breakdown.{key}': API={v_api} vs DB={v_db}\")
+                  sys.exit(1)
+
+          print('[OK] Database record matches API persistedIndex response perfectly.')
+          "
 
       - name: Print Docker Logs on Failure
         if: always()
