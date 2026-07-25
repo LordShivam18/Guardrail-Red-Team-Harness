@@ -11,6 +11,8 @@ RUN groupadd --system --gid 10001 guardrail \
 
 COPY requirements.txt ./
 RUN pip install --disable-pip-version-check --no-cache-dir -r requirements.txt
+RUN pip install --disable-pip-version-check --no-cache-dir https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl
+RUN python -c "import spacy; spacy.load('en_core_web_lg'); print('spaCy model ok')"
 
 COPY main.py swarm.py ./
 

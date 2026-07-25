@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { requireOperatorSession, OperatorSessionError } from "./operator-session";
 import { createOperatorSessionToken } from "./auth-token";
 

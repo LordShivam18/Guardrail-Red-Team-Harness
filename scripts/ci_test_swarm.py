@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import time
@@ -140,7 +141,17 @@ def test_continuous_assurance():
         print("    [FAIL] Standalone Sandbox FAILED to block the attack.")
         
     print("\n    -> Running Agent Evaluation Scenario (poisoned-invoice-sql)...")
-    run_id = str(uuid.uuid4())
+    run_id = os.getenv("CI_RUN_ID", "").strip()
+    if not run_id:
+        print("ERROR: CI_RUN_ID environment variable is missing or empty.")
+        print("A pre-created redteam_runs database fixture UUID is required for persistence evaluation.")
+        sys.exit(2)
+
+    output_path = os.getenv("CI_PERSISTED_INDEX_PATH", "").strip()
+    if not output_path:
+        print("ERROR: CI_PERSISTED_INDEX_PATH environment variable is missing or empty.")
+        sys.exit(2)
+
     evaluate_req = requests.post(
         f"{BASE_URL}/api/sandbox/evaluate-agent",
         headers=headers,
@@ -186,11 +197,27 @@ def test_continuous_assurance():
     eval_result = evaluate_req.json()
     status = eval_result.get("status")
     dlp_intercepted = eval_result.get("dlpIntercepted", False)
-    sovereign_score = eval_result.get("sovereignImpact", {}).get("persistedIndex", {}).get("score", -1)
+    sovereign_impact = eval_result.get("sovereignImpact", {})
+    persisted_index = sovereign_impact.get("persistedIndex")
+    if not persisted_index or not isinstance(persisted_index, dict):
+        print("ERROR: Agent Sandbox Evaluation returned null or invalid persistedIndex.")
+        print(f"Response: {eval_result}")
+        sys.exit(2)
+
+    try:
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(persisted_index, f, indent=2)
+        print(f"    [OK] Saved API persistedIndex JSON to {output_path}")
+    except Exception as e:
+        print(f"ERROR: Failed to write persistedIndex to {output_path}: {e}")
+        sys.exit(2)
+
+    sovereign_score = persisted_index.get("score")
     
     print(f"    Status: {status}")
     print(f"    DLP Intercepted: {dlp_intercepted}")
     print(f"    Sovereign Score: {sovereign_score}")
+    print(f"    Persisted Index: {persisted_index}")
 
     # 4. Assertions
     print("\n[4] Asserting Security Results...")

@@ -9,3 +9,4 @@ presidio-analyzer
 presidio-anonymizer
 openai
 httpx
+python-multipart==0.0.32

@@ -10,9 +10,15 @@ vi.mock("@/agents/guardedAgent", () => ({
   guardedResponse: vi.fn()
 }));
 
-// Mock sovereign index persistence only since it's unused in assertions but expensive if called
+// Mock sovereign index persistence
 vi.mock("@/lib/sovereign/persistence", () => ({
-  persistSovereignIndex: vi.fn()
+  persistSovereignIndex: vi.fn(),
+  SovereignRunNotFoundError: class SovereignRunNotFoundError extends Error {
+    constructor() {
+      super("Cannot persist Sovereign Index: red-team run was not found.");
+      this.name = "SovereignRunNotFoundError";
+    }
+  }
 }));
 
 vi.mock("@/lib/driftMonitorUrl", () => ({
@@ -26,6 +32,7 @@ import { POST } from "./route";
 import { requireOperatorSession, OperatorSessionError } from "@/lib/operator-session";
 import { guardedResponse } from "@/agents/guardedAgent";
 import { isCiTestMode, resolveDriftMonitorUrl } from "@/lib/driftMonitorUrl";
+import { persistSovereignIndex, SovereignRunNotFoundError } from "@/lib/sovereign/persistence";
 
 describe("POST /api/sandbox/evaluate-agent", () => {
   const originalEnv = process.env;
@@ -59,7 +66,7 @@ describe("POST /api/sandbox/evaluate-agent", () => {
     expect(await res.json()).toEqual({ error: "An authenticated operator session is required." });
   });
 
-  it("produces HTTP 200 and expected schema on CONTAINED evaluation", async () => {
+  it("produces HTTP 200 and expected schema on CONTAINED evaluation without persist", async () => {
     vi.mocked(requireOperatorSession).mockResolvedValueOnce(VALID_IDENTITY);
     vi.mocked(guardedResponse).mockResolvedValueOnce({
       finalOutput: '{"final": "I cannot fulfill this request."}',
@@ -86,6 +93,130 @@ describe("POST /api/sandbox/evaluate-agent", () => {
         persistedIndex: null
       }
     });
+    expect(persistSovereignIndex).not.toHaveBeenCalled();
+  });
+
+  it("returns persisted index when evaluation is run with a valid existing run persistence request", async () => {
+    vi.mocked(requireOperatorSession).mockResolvedValueOnce(VALID_IDENTITY);
+    vi.mocked(guardedResponse).mockResolvedValueOnce({
+      finalOutput: '{"final": "I cannot fulfill this request."}',
+      blocked: false
+    });
+
+    const mockPersistedIndex = {
+      score: 92,
+      status: "COMPLIANT",
+      breakdown: { robustness: 95, privacy: 100, fuzzing: 80 }
+    };
+    vi.mocked(persistSovereignIndex).mockResolvedValueOnce(mockPersistedIndex as any);
+
+    const validRunId = "12345678-1234-4234-8234-123456789abc";
+    const req = createRequest({
+      scenarioId: "poisoned-invoice-sql",
+      persist: {
+        runId: validRunId,
+        robustness: {
+          decision: "CERTIFIED",
+          pA: 0.95,
+          pB: 0.05,
+          epsilonRadius: 0.5,
+          rawMetrics: {},
+          scope: { tokenizerDigest: "abc", representation: "embedding-l2", sampleCount: 100, alpha: 0.01 }
+        },
+        privacy: { status: "COMPLIANT", epsilon: 1.0, delta: 1e-5 },
+        fuzzerStats: { jailbreakRate: 0 }
+      }
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.sovereignImpact.persistedIndex).toEqual(mockPersistedIndex);
+    expect(persistSovereignIndex).toHaveBeenCalledWith(
+      validRunId,
+      expect.objectContaining({
+        fuzzerStats: expect.objectContaining({
+          agentHijacking: { totalScenarios: 1, hijackedScenarios: 0 }
+        })
+      })
+    );
+  });
+
+  it("classifies SovereignRunNotFoundError with structured logging and generic HTTP 500 response", async () => {
+    vi.mocked(requireOperatorSession).mockResolvedValueOnce(VALID_IDENTITY);
+    vi.mocked(guardedResponse).mockResolvedValueOnce({
+      finalOutput: '{"final": "I cannot fulfill this request."}',
+      blocked: false
+    });
+    vi.mocked(persistSovereignIndex).mockRejectedValueOnce(
+      new SovereignRunNotFoundError()
+    );
+
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const validRunId = "12345678-1234-4234-8234-123456789abc";
+    const req = createRequest({
+      scenarioId: "poisoned-invoice-sql",
+      persist: {
+        runId: validRunId,
+        robustness: {
+          decision: "CERTIFIED",
+          pA: 0.95,
+          pB: 0.05,
+          epsilonRadius: 0.5,
+          rawMetrics: {},
+          scope: { tokenizerDigest: "abc", representation: "embedding-l2", sampleCount: 100, alpha: 0.01 }
+        },
+        privacy: { status: "COMPLIANT", epsilon: 1.0, delta: 1e-5 },
+        fuzzerStats: { jailbreakRate: 0 }
+      }
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "Agent sandbox evaluation failed." });
+    expect(consoleErrorSpy).toHaveBeenCalledWith("[agent-sandbox] Sovereign Index persistence failed: run not found");
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith("[agent-sandbox] Evaluation failed.");
+  });
+
+  it("handles unrelated database/internal errors without misclassifying or exposing raw details", async () => {
+    vi.mocked(requireOperatorSession).mockResolvedValueOnce(VALID_IDENTITY);
+    vi.mocked(guardedResponse).mockResolvedValueOnce({
+      finalOutput: '{"final": "I cannot fulfill this request."}',
+      blocked: false
+    });
+    const dbErr = new Error("connection to server at postgres:5432 failed: FATAL: password authentication failed");
+    vi.mocked(persistSovereignIndex).mockRejectedValueOnce(dbErr);
+
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const validRunId = "12345678-1234-4234-8234-123456789abc";
+    const req = createRequest({
+      scenarioId: "poisoned-invoice-sql",
+      persist: {
+        runId: validRunId,
+        robustness: {
+          decision: "CERTIFIED",
+          pA: 0.95,
+          pB: 0.05,
+          epsilonRadius: 0.5,
+          rawMetrics: {},
+          scope: { tokenizerDigest: "abc", representation: "embedding-l2", sampleCount: 100, alpha: 0.01 }
+        },
+        privacy: { status: "COMPLIANT", epsilon: 1.0, delta: 1e-5 },
+        fuzzerStats: { jailbreakRate: 0 }
+      }
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body).toEqual({ error: "Agent sandbox evaluation failed." });
+    expect(body.error).not.toContain("postgres");
+    expect(body.error).not.toContain("FATAL");
+    expect(consoleErrorSpy).toHaveBeenCalledWith("[agent-sandbox] Evaluation failed.");
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith("[agent-sandbox] Sovereign Index persistence failed: run not found");
   });
 
   it("produces HTTP 200 and HIJACKED status when DLP is intercepted", async () => {
@@ -123,4 +254,3 @@ describe("POST /api/sandbox/evaluate-agent", () => {
     expect(json.error).toBe("DLP protection service is unavailable. Evaluation cannot proceed safely.");
   });
 });
-

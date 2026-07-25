@@ -13,6 +13,13 @@ export type SovereignRunAssessment = {
   fuzzerStats: SovereignFuzzerStats;
 };
 
+export class SovereignRunNotFoundError extends Error {
+  constructor() {
+    super("Cannot persist Sovereign Index: red-team run was not found.");
+    this.name = "SovereignRunNotFoundError";
+  }
+}
+
 /** Calculates and atomically stores the certification decision for a completed run. */
 export async function persistSovereignIndex(
   runId: string,
@@ -37,7 +44,7 @@ export async function persistSovereignIndex(
   `) as { id: string }[];
 
   if (!rows[0]) {
-    throw new Error("Cannot persist Sovereign Index: red-team run was not found.");
+    throw new SovereignRunNotFoundError();
   }
 
   return index;

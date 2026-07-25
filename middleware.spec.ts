@@ -102,6 +102,7 @@ describe("Mesh API middleware", () => {
     expect(config.matcher).toEqual([
       "/api/proxy/:path*",
       "/api/sandbox/:path*",
+      "/api/generate-swarm-attack",
       "/api/fuzzer/:path*",
       "/api/registry",
       "/api/compliance/:path*",

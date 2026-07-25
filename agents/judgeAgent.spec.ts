@@ -4,7 +4,7 @@ import {
   normalizeTextForInspection,
   getMockJudgeEvaluation
 } from "./judgeAgent";
-import { MUTATIONS, SEED_PAYLOADS, selectMutation, selectSeedPayload } from "../scripts/ci-runner";
+import { MUTATIONS, SEED_PAYLOADS, selectMutation, selectSeedPayload } from "../scripts/ci-runner-core";
 
 describe("Deterministic CI Classifier & Integration Gate", () => {
   it("strips zero-width characters and decodes bounded base64 payloads safely", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateGate, type FuzzerStats, type RunnerConfig } from "./ci-runner";
+import { evaluateGate, type FuzzerStats, type RunnerConfig } from "./ci-runner-core";
 
 const mockConfig: RunnerConfig = {
   model: "gemini-2.0-flash",
