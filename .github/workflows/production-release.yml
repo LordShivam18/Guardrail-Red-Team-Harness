@@ -1,0 +1,216 @@
+name: Production Release Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: production-release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  production-release:
+    name: Production Release & Smoke Verification
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Docker Buildx
+        uses: actions/setup-buildx-action@v3
+
+      # ---------------------------------------------------------------------
+      # Stage A: Release Verification
+      # ---------------------------------------------------------------------
+      - name: Install Node Dependencies
+        run: npm ci
+
+      - name: Run Node Unit & Integration Tests
+        run: npm test
+
+      - name: Build Next.js Application
+        run: npm run build
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r services/drift-monitor/requirements.txt PyJWT requests httpx
+
+      - name: Python Import Smoke Test
+        run: python -c "import sys; sys.path.insert(0, 'services/drift-monitor'); import main; print('drift import ok')"
+
+      - name: Run Python Unit Tests
+        run: npm run test:python
+
+      - name: Verify Drift-Monitor Docker Build
+        run: |
+          docker build \
+            -f services/drift-monitor/Dockerfile \
+            services/drift-monitor
+
+      # ---------------------------------------------------------------------
+      # Stage B: Package Drift-Monitor Image to GHCR
+      # ---------------------------------------------------------------------
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/guardrail-red-team-harness-drift-monitor
+          tags: |
+            type=raw,value=${{ github.sha }}
+            type=raw,value=main
+          labels: |
+            org.opencontainers.image.title=Guardrail Mesh Drift Monitor
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build and Push Drift-Monitor Image
+        id: docker_build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/drift-monitor
+          file: ./services/drift-monitor/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ---------------------------------------------------------------------
+      # Stage C: Deployment Handoff
+      # ---------------------------------------------------------------------
+      - name: Trigger Deployment Handoff
+        run: |
+          DEPLOY_HOOK="${{ secrets.DRIFT_MONITOR_DEPLOY_HOOK_URL }}"
+          if [ -z "$DEPLOY_HOOK" ]; then
+            echo "❌ ERROR: Production drift-monitor deployment target is not configured."
+            echo "Set the DRIFT_MONITOR_DEPLOY_HOOK_URL repository environment secret."
+            exit 1
+          fi
+
+          echo "Triggering production deployment hook..."
+          # Mask full secret URL in logs
+          HTTP_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" -X POST "$DEPLOY_HOOK" --max-time 30 || echo "000")
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "[OK] Deployment hook triggered successfully (HTTP $HTTP_STATUS)."
+          else
+            echo "❌ ERROR: Deployment hook failed with HTTP status $HTTP_STATUS."
+            exit 1
+          fi
+
+      # ---------------------------------------------------------------------
+      # Stage D: Wait for Deployed Drift Monitor Health
+      # ---------------------------------------------------------------------
+      - name: Wait for Deployed Drift Monitor Health
+        run: |
+          DRIFT_URL="${{ secrets.DRIFT_MONITOR_URL }}"
+          if [ -z "$DRIFT_URL" ]; then
+            echo "❌ ERROR: DRIFT_MONITOR_URL production secret is missing."
+            exit 1
+          fi
+
+          if [[ "$DRIFT_URL" != https://* ]]; then
+            echo "❌ ERROR: Production DRIFT_MONITOR_URL must use HTTPS protocol."
+            exit 1
+          fi
+
+          HEALTH_URL="${DRIFT_URL%/}/health"
+          echo "Polling deployed drift-monitor health endpoint..."
+
+          MAX_RETRIES=30
+          DELAY_SECS=5
+          HEALTHY=false
+
+          for i in $(seq 1 $MAX_RETRIES); do
+            HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" "$HEALTH_URL" --max-time 10 || echo "000")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "[OK] Deployed drift-monitor is healthy (attempt $i/$MAX_RETRIES)."
+              HEALTHY=true
+              break
+            fi
+            echo "Attempt $i/$MAX_RETRIES: drift-monitor health returned HTTP $HTTP_CODE, retrying in ${DELAY_SECS}s..."
+            sleep $DELAY_SECS
+          done
+
+          if [ "$HEALTHY" != "true" ]; then
+            echo "❌ ERROR: Deployed drift-monitor failed to become healthy within 150 seconds."
+            exit 1
+          fi
+
+      # ---------------------------------------------------------------------
+      # Stage E: Production Smoke Verification
+      # ---------------------------------------------------------------------
+      - name: Execute Production Smoke Test
+        env:
+          PRODUCTION_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
+          DRIFT_MONITOR_URL: ${{ secrets.DRIFT_MONITOR_URL }}
+          DRIFT_MONITOR_API_TOKEN: ${{ secrets.DRIFT_MONITOR_API_TOKEN }}
+          MESH_AUTH_TOKEN_SECRET: ${{ secrets.MESH_AUTH_TOKEN_SECRET }}
+        run: |
+          if [ -z "$PRODUCTION_BASE_URL" ] || [ -z "$DRIFT_MONITOR_URL" ] || [ -z "$DRIFT_MONITOR_API_TOKEN" ] || [ -z "$MESH_AUTH_TOKEN_SECRET" ]; then
+            echo "❌ ERROR: Required production secrets are missing for smoke test."
+            echo "Ensure PRODUCTION_BASE_URL, DRIFT_MONITOR_URL, DRIFT_MONITOR_API_TOKEN, and MESH_AUTH_TOKEN_SECRET are set."
+            exit 1
+          fi
+
+          echo "Running production smoke-test suite..."
+          python scripts/smoke_test_production.py
+
+      # ---------------------------------------------------------------------
+      # Stage F: Release Summary
+      # ---------------------------------------------------------------------
+      - name: Generate Release Summary
+        if: always()
+        run: |
+          IMAGE_TAG="ghcr.io/${{ github.repository_owner }}/guardrail-red-team-harness-drift-monitor:${{ github.sha }}"
+          DIGEST="${{ steps.docker_build.outputs.digest }}"
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          cat << EOF >> $GITHUB_STEP_SUMMARY
+          ## 🚀 Guardrail Mesh — Production Release Summary
+
+          - **Commit SHA:** \`${{ github.sha }}\`
+          - **Release Timestamp:** \`${TIMESTAMP}\`
+          - **Container Image:** \`${IMAGE_TAG}\`
+          - **Image Digest:** \`${DIGEST:-N/A}\`
+
+          ### Release Gate Status
+          | Gate | Status |
+          |------|--------|
+          | Node Tests | ${{ job.status == 'success' && '✅ PASSED' || '❌ FAILED' }} |
+          | Python Tests | ${{ job.status == 'success' && '✅ PASSED' || '❌ FAILED' }} |
+          | Next.js Build | ${{ job.status == 'success' && '✅ PASSED' || '❌ FAILED' }} |
+          | Docker Build & Push | ${{ steps.docker_build.outcome == 'success' && '✅ PASSED' || '❌ FAILED' }} |
+          | Deployment Handoff | ${{ steps.docker_build.outcome == 'success' && '✅ PASSED' || '❌ FAILED' }} |
+          | Drift-Monitor Health | ${{ job.status == 'success' && '✅ HEALTHY' || '❌ UNHEALTHY' }} |
+          | Production Smoke Test | ${{ job.status == 'success' && '✅ PASSED' || '❌ FAILED' }} |
+
+          EOF
