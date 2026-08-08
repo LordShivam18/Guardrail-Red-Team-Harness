@@ -124,7 +124,68 @@ app = FastAPI(
     description="Post-market statistical drift detection using KL divergence.",
 )
 
-# Setup Presidio for DLP lazily — thread-safe, fail-closed
+
+# --------------------------------------------------------------------------
+# Startup environment validation
+# --------------------------------------------------------------------------
+
+def _validate_startup_config() -> None:
+    """Log clear, actionable warnings for missing required environment variables.
+
+    Does NOT raise — the process continues so that /health remains reachable
+    for liveness probes.  Protected endpoints remain inaccessible because
+    ``_verify_service_token`` rejects requests when the token is unconfigured.
+    """
+    required = {
+        "DRIFT_MONITOR_API_TOKEN": "Service-to-service bearer token for API auth.",
+        "DRIFT_WEBHOOK_URL": "Next.js webhook endpoint for drift alerts.",
+        "DRIFT_WEBHOOK_SECRET": "HMAC-SHA256 secret for signing drift alert payloads.",
+    }
+    missing = [
+        f"  {name}: {desc}"
+        for name, desc in required.items()
+        if not os.environ.get(name, "").strip()
+    ]
+    if missing:
+        LOGGER.warning(
+            "Drift monitor started with missing environment variables. "
+            "Requests to protected endpoints will fail until these are configured:\n%s",
+            "\n".join(missing),
+        )
+
+    # Validate swarm provider only when not in CI mode (it is optional otherwise)
+    if not (
+        os.environ.get("CI", "").strip().lower() == "true"
+        or os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true"
+    ):
+        swarm_required = {
+            "SWARM_PROVIDER_BASE_URL": "OpenAI-compatible API base URL.",
+            "SWARM_PROVIDER_API_KEY": "API key for the swarm LLM provider.",
+            "SWARM_PROVIDER_MODEL": "Model name for swarm generation.",
+        }
+        swarm_missing = [
+            f"  {name}: {desc}"
+            for name, desc in swarm_required.items()
+            if not os.environ.get(name, "").strip()
+        ]
+        if swarm_missing:
+            LOGGER.info(
+                "Swarm provider is not fully configured. "
+                "/api/generate-swarm-attack will return 503 until configured:\n%s",
+                "\n".join(swarm_missing),
+            )
+
+
+@app.on_event("startup")
+def _on_startup() -> None:
+    """Run environment validation at process startup."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+    _validate_startup_config()
+
+
 _analyzer_instance: AnalyzerEngine | None = None
 _anonymizer_instance: AnonymizerEngine | None = None
 _dlp_lock = threading.Lock()

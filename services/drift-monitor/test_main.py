@@ -5,6 +5,7 @@ the large ``en_core_web_lg`` spaCy model being installed locally.
 The real model is verified separately inside the Docker image build.
 """
 
+import logging
 import os
 import threading
 import unittest
@@ -183,6 +184,94 @@ class TestDlpLazyInitializer(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["is_compromised"])
+
+
+class TestStartupValidation(unittest.TestCase):
+    """Prove _validate_startup_config logs warnings on missing vars."""
+
+    def _run_validate(self, env_overrides: dict) -> list[str]:
+        """Run _validate_startup_config under a controlled environment, capturing log output."""
+        records: list[str] = []
+
+        class _CapturingHandler(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                records.append(record.getMessage())
+
+        handler = _CapturingHandler()
+        logger = logging.getLogger("guardrail_mesh.drift_monitor")
+        logger.addHandler(handler)
+        old_level = logger.level
+        logger.setLevel(logging.DEBUG)
+        try:
+            with patch.dict(os.environ, env_overrides, clear=True):
+                main._validate_startup_config()
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(old_level)
+        return records
+
+    def test_warns_when_required_vars_missing(self):
+        """Should log a warning listing missing required environment variables."""
+        records = self._run_validate({
+            "CI": "false",
+        })
+        combined = " ".join(records)
+        self.assertTrue(
+            any("missing environment variables" in r for r in records),
+            f"Expected warning about missing env vars in logs: {records}",
+        )
+        self.assertIn("DRIFT_MONITOR_API_TOKEN", combined)
+        self.assertIn("DRIFT_WEBHOOK_URL", combined)
+        self.assertIn("DRIFT_WEBHOOK_SECRET", combined)
+
+    def test_silent_when_all_required_vars_present(self):
+        """Should emit no warnings when all required vars are set."""
+        records = self._run_validate({
+            "DRIFT_MONITOR_API_TOKEN": "secret-token-value",
+            "DRIFT_WEBHOOK_URL": "https://app.example.com/api/webhooks/drift",
+            "DRIFT_WEBHOOK_SECRET": "signing-secret-value",
+            "SWARM_PROVIDER_BASE_URL": "https://api.openai.com/v1",
+            "SWARM_PROVIDER_API_KEY": "sk-test",
+            "SWARM_PROVIDER_MODEL": "gpt-4o-mini",
+            "CI": "false",
+        })
+        warning_records = [r for r in records if "missing" in r.lower()]
+        self.assertEqual(warning_records, [], f"Unexpected warnings: {warning_records}")
+
+    def test_ci_mode_suppresses_swarm_missing_warning(self):
+        """In CI mode, missing SWARM_PROVIDER_* vars should not produce warnings (only info)."""
+        records = self._run_validate({
+            "DRIFT_MONITOR_API_TOKEN": "token",
+            "DRIFT_WEBHOOK_URL": "http://localhost:3000/api/webhooks/drift",
+            "DRIFT_WEBHOOK_SECRET": "secret",
+            "CI": "true",
+        })
+        # In CI mode, no warning about swarm provider
+        combined = " ".join(records)
+        self.assertNotIn("SWARM_PROVIDER_BASE_URL", combined)
+        self.assertNotIn("SWARM_PROVIDER_API_KEY", combined)
+        self.assertNotIn("SWARM_PROVIDER_MODEL", combined)
+
+    def test_no_secrets_in_log_output(self):
+        """Log output must never contain the actual value of a secret."""
+        secret_value = "super-secret-token-9991"
+        records = self._run_validate({
+            "DRIFT_MONITOR_API_TOKEN": secret_value,
+            "DRIFT_WEBHOOK_URL": "https://app.example.com/api/webhooks/drift",
+            "DRIFT_WEBHOOK_SECRET": "another-secret",
+            "CI": "false",
+        })
+        combined = " ".join(records)
+        self.assertNotIn(secret_value, combined, "Secret token appeared in log output!")
+        self.assertNotIn("another-secret", combined, "Webhook secret appeared in log output!")
+
+    def test_health_endpoint_not_blocked_when_token_unconfigured(self):
+        """GET /health must return 200 even when DRIFT_MONITOR_API_TOKEN is absent."""
+        client = TestClient(app)
+        with patch.dict(os.environ, {"DRIFT_MONITOR_API_TOKEN": ""}, clear=False):
+            response = client.get("/health")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok"})
 
 
 if __name__ == "__main__":

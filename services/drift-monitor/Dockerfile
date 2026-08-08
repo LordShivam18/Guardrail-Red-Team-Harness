@@ -19,4 +19,7 @@ COPY main.py swarm.py ./
 USER guardrail
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# PORT env var is injected by managed platforms (Cloud Run, Railway, ECS).
+# Falls back to 8000 for Docker Compose and local runs.
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+
