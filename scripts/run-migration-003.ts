@@ -20,7 +20,7 @@ async function main() {
     process.cwd(),
     "supabase",
     "migrations",
-    "003_compliance_engine.sql"
+    "003a_compliance_engine.sql"
   );
   const migrationSql = readFileSync(migrationPath, "utf8");
 

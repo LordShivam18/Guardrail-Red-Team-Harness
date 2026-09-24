@@ -25,7 +25,10 @@ export async function GET(request: Request) {
 
   if (!certificateHash || !isLikelySha256(certificateHash)) {
     return NextResponse.json({
-      verified: false
+      verified: false,
+      recordFound: false,
+      cryptographicValidity: "NOT_VERIFIED",
+      verificationLevel: "RECORD_EXISTENCE_V1"
     });
   }
 
@@ -48,12 +51,20 @@ export async function GET(request: Request) {
 
     if (!run) {
       return NextResponse.json({
-        verified: false
+        verified: false,
+        recordFound: false,
+        cryptographicValidity: "NOT_VERIFIED",
+        verificationLevel: "RECORD_EXISTENCE_V1"
       });
     }
 
     return NextResponse.json({
       verified: true,
+      recordFound: true,
+      // RECORD_EXISTENCE_V1 only proves a run row with this hash exists.
+      // It does not verify a VC signature, Merkle proof, or on-chain receipt.
+      cryptographicValidity: "NOT_VERIFIED",
+      verificationLevel: "RECORD_EXISTENCE_V1",
       runDetails: {
         runId: run.id,
         timestamp: run.timestamp,
@@ -71,7 +82,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json(
       {
-        verified: false
+        verified: false,
+        recordFound: false,
+        cryptographicValidity: "NOT_VERIFIED",
+        verificationLevel: "RECORD_EXISTENCE_V1"
       },
       { status: 500 }
     );

@@ -83,8 +83,8 @@ services:
       - ./supabase/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
       - ./supabase/migrations/001_add_telemetry_columns.sql:/docker-entrypoint-initdb.d/010-telemetry.sql:ro
       - ./supabase/migrations/002_mesh_zero_days.sql:/docker-entrypoint-initdb.d/020-mesh-zero-days.sql:ro
-      - ./supabase/migrations/003_compliance_engine.sql:/docker-entrypoint-initdb.d/030-compliance.sql:ro
-      - ./supabase/migrations/003_mesh_dataset_versions.sql:/docker-entrypoint-initdb.d/031-mesh-dataset-versions.sql:ro
+      - ./supabase/migrations/003a_compliance_engine.sql:/docker-entrypoint-initdb.d/030-compliance.sql:ro
+      - ./supabase/migrations/003b_mesh_dataset_versions.sql:/docker-entrypoint-initdb.d/031-mesh-dataset-versions.sql:ro
       - ./supabase/migrations/004_phase9_modality.sql:/docker-entrypoint-initdb.d/040-phase9-modality.sql:ro
       - ./supabase/migrations/005_sovereign_index.sql:/docker-entrypoint-initdb.d/050-sovereign-index.sql:ro
       - ./supabase/migrations/006_evolutionary_art.sql:/docker-entrypoint-initdb.d/060-evolutionary-art.sql:ro

@@ -210,14 +210,20 @@ export async function getLatestRunSummary(): Promise<RunSummaryData | null> {
   };
 }
 
-export async function getLatestRunIncidents(): Promise<IncidentLogData | null> {
-  const latestRun = await getLatestRun();
+export function isMissingColumnError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
 
-  if (!latestRun) {
-    return null;
-  }
+  return /column .* does not exist/i.test(message);
+}
 
-  const rows = (await sql`
+export function isMissingModalityColumnError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return /column .*\.?modality does not exist/i.test(message);
+}
+
+async function queryIncidentsWithModality(runId: string): Promise<ResultRow[]> {
+  return (await sql`
     select
       r.id,
       r.final_output,
@@ -230,9 +236,59 @@ export async function getLatestRunIncidents(): Promise<IncidentLogData | null> {
       p.prompt_text
     from redteam_results r
     inner join adversarial_prompts p on p.id = r.test_id
-    where r.run_id = ${latestRun.id}::uuid
+    where r.run_id = ${runId}::uuid
     order by r.created_at asc
   `) as ResultRow[];
+}
+
+async function queryIncidentsWithoutModality(runId: string): Promise<ResultRow[]> {
+  return (await sql`
+    select
+      r.id,
+      r.final_output,
+      r.raw_output,
+      r.blocked,
+      r.outcome_flag,
+      r.created_at,
+      'text' as modality,
+      p.category,
+      p.prompt_text
+    from redteam_results r
+    inner join adversarial_prompts p on p.id = r.test_id
+    where r.run_id = ${runId}::uuid
+    order by r.created_at asc
+  `) as ResultRow[];
+}
+
+export async function getLatestRunIncidents(): Promise<IncidentLogData | null> {
+  const latestRun = await getLatestRun();
+
+  if (!latestRun) {
+    return null;
+  }
+
+  let rows: ResultRow[];
+
+  try {
+    rows = await queryIncidentsWithModality(latestRun.id);
+  } catch (error) {
+    // Migration 004 (004_phase9_modality.sql) is the canonical source of truth
+    // for the modality columns. Older databases that have not applied it will
+    // fail here; fall back to a modality-free query so the dashboard degrades
+    // gracefully instead of crashing, and point the operator at the migration.
+    if (!isMissingModalityColumnError(error)) {
+      throw error;
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+
+    console.warn(
+      `[dashboard] redteam_results.modality or adversarial_prompts.modality is missing (${message}). ` +
+        `Falling back to 'text' modality. Apply supabase/migrations/004_phase9_modality.sql via npm run db:migrate:004.`
+    );
+
+    rows = await queryIncidentsWithoutModality(latestRun.id);
+  }
 
   const incidents = rows.map((row) => ({
     id: row.id,
