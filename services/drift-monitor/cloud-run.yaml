@@ -1,0 +1,106 @@
+# Guardrail Mesh — drift-monitor Cloud Run service manifest.
+#
+# REPRODUCIBLE DEPLOYMENT TEMPLATE. Fill the placeholders before applying:
+#   <GCP-PROJECT>        Google Cloud project id hosting the service.
+#   <REGION>             Cloud Run region, e.g. europe-west1.
+#   <GITHUB-OWNER>       GitHub org/user owning the GHCR image.
+#   <TAG>                Image tag, e.g. a commit SHA or `main`
+#                        (see production-release.yml Stage B for published tags).
+#   <VERCEL-APP-HOST>    Production Next.js host, e.g. your-app.vercel.app
+#                        (DRIFT_WEBHOOK_URL must be its full HTTPS webhook URL).
+#
+# Secrets are NEVER stored here. Create three Secret Manager secrets with the
+# exact names below, then reference them read-only via valueFrom (already
+# wired). Generate values with:
+#   python3 -c "import secrets; print(secrets.token_hex(32))"
+# Never commit generated values to source control.
+#
+# Apply (after substitution):
+#   gcloud run services replace services/drift-monitor/cloud-run.yaml \
+#     --project=<GCP-PROJECT> --region=<REGION>
+#
+# The container image already runs as non-root user `guardrail` (UID 10001);
+# see services/drift-monitor/Dockerfile. No application behavior is changed
+# by this manifest — same image, same CMD (`uvicorn main:app`,
+# 0.0.0.0:${PORT:-8000}), same endpoints and auth contract.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: guardrail-mesh-drift-monitor
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        # Scale to zero when idle (cost-efficient); cold starts are acceptable
+        # because /health stays unauthenticated for the platform prober.
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      containerConcurrency: 10
+      # Must exceed the slowest downstream call chain: the Next.js
+      # evaluate-agent route allows 60s and the DLP call times out at 10s.
+      timeoutSeconds: 60
+      containers:
+        - image: ghcr.io/<GITHUB-OWNER>/guardrail-red-team-harness-drift-monitor:<TAG>
+          ports:
+            # Cloud Run injects PORT=<containerPort>; the image honors $PORT
+            # via `uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}`.
+            - containerPort: 8000
+          resources:
+            limits:
+              # en_core_web_lg + Presidio engines need headroom above the
+              # platform default; 2Gi/2CPU is the tested floor.
+              memory: 2Gi
+              cpu: "2"
+          # Platform probes use the unauthenticated GET /health endpoint
+          # (services/drift-monitor/main.py: health_check -> {"status":"ok"}).
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          env:
+            # --- Required: bearer auth for all protected endpoints ---------
+            # Missing server-side token -> protected endpoints return 503.
+            - name: DRIFT_MONITOR_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: DRIFT_MONITOR_API_TOKEN
+            # --- Required: HMAC secret for signing drift webhooks -----------
+            # Must equal the Vercel DRIFT_WEBHOOK_SECRET value.
+            - name: DRIFT_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  key: latest
+                  name: DRIFT_WEBHOOK_SECRET
+            # --- Required: Next.js drift webhook endpoint -------------------
+            # Fill with the production control-plane URL (HTTPS only).
+            - name: DRIFT_WEBHOOK_URL
+              value: https://<VERCEL-APP-HOST>/api/webhooks/drift
+            # --- Optional: outbound webhook timeout (seconds) ---------------
+            - name: DRIFT_WEBHOOK_TIMEOUT_SECONDS
+              value: "5"
+            # --- Optional: live swarm LLM provider (all three or none) ------
+            # Uncomment to enable live swarm generation. Absent ->
+            # /api/generate-swarm-attack returns 503 (by design);
+            # drift/KL/vision/data/DLP endpoints are unaffected.
+            # - name: SWARM_PROVIDER_BASE_URL
+            #   value: https://api.openai.com/v1
+            # - name: SWARM_PROVIDER_MODEL
+            #   value: gpt-4o-mini
+            # - name: SWARM_PROVIDER_API_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       key: latest
+            #       name: SWARM_PROVIDER_API_KEY
