@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { neon } from "@neondatabase/serverless";
 import { loadLocalEnv } from "./env";
+import { splitPostgresStatements } from "./sqlMigration";
 
 async function main() {
   loadLocalEnv();
@@ -21,7 +22,9 @@ async function main() {
   const migrationSql = readFileSync(migrationPath, "utf8");
   const sql = neon(databaseUrl);
 
-  await sql.query(migrationSql);
+  for (const statement of splitPostgresStatements(migrationSql)) {
+    await sql.query(statement);
+  }
 
   const redteamColumns = (await sql`
     select column_name
