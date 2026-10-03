@@ -110,9 +110,10 @@ jobs:
         run: |
           DEPLOY_HOOK="${{ secrets.DRIFT_MONITOR_DEPLOY_HOOK_URL }}"
           if [ -z "$DEPLOY_HOOK" ]; then
-            echo "❌ ERROR: Production drift-monitor deployment target is not configured."
-            echo "Set the DRIFT_MONITOR_DEPLOY_HOOK_URL repository environment secret."
-            exit 1
+            echo "⚠️  WARNING: DRIFT_MONITOR_DEPLOY_HOOK_URL is not configured — skipping external deployment trigger."
+            echo "   To enable automated deployment, set DRIFT_MONITOR_DEPLOY_HOOK_URL in the 'production' GitHub environment secrets."
+            echo "   See services/drift-monitor/DEPLOY.md §8 for Cloud Run native deployment (recommended alternative)."
+            exit 0
           fi
 
           echo "Triggering production deployment hook..."
