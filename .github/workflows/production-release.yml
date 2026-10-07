@@ -177,14 +177,15 @@ jobs:
           DRIFT_MONITOR_API_TOKEN: ${{ secrets.DRIFT_MONITOR_API_TOKEN }}
           MESH_AUTH_TOKEN_SECRET: ${{ secrets.MESH_AUTH_TOKEN_SECRET }}
         run: |
-          if [ -z "$PRODUCTION_BASE_URL" ] || [ -z "$DRIFT_MONITOR_URL" ] || [ -z "$DRIFT_MONITOR_API_TOKEN" ] || [ -z "$MESH_AUTH_TOKEN_SECRET" ]; then
+          MISSING=()
+          [ -z "$PRODUCTION_BASE_URL" ]      && MISSING+=("PRODUCTION_BASE_URL")
+          [ -z "$DRIFT_MONITOR_URL" ]         && MISSING+=("DRIFT_MONITOR_URL")
+          [ -z "$DRIFT_MONITOR_API_TOKEN" ]   && MISSING+=("DRIFT_MONITOR_API_TOKEN")
+          [ -z "$MESH_AUTH_TOKEN_SECRET" ]    && MISSING+=("MESH_AUTH_TOKEN_SECRET")
+
+          if [ ${#MISSING[@]} -gt 0 ]; then
             echo "⚠️  WARNING: One or more production secrets are missing — skipping smoke test."
-            echo "   Missing secrets: $( \
-              { [ -z "$PRODUCTION_BASE_URL" ]      && echo 'PRODUCTION_BASE_URL'; } \
-              { [ -z "$DRIFT_MONITOR_URL" ]         && echo 'DRIFT_MONITOR_URL'; } \
-              { [ -z "$DRIFT_MONITOR_API_TOKEN" ]   && echo 'DRIFT_MONITOR_API_TOKEN'; } \
-              { [ -z "$MESH_AUTH_TOKEN_SECRET" ]    && echo 'MESH_AUTH_TOKEN_SECRET'; } \
-            )"
+            echo "   Missing secrets: ${MISSING[*]}"
             echo "   Set them in the 'production' GitHub environment secrets to enable full smoke verification."
             exit 0
           fi
